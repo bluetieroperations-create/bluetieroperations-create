@@ -16,6 +16,8 @@ Two products, one thesis: **an autonomous agent needs a gate before the action a
 
 ## Key repos
 
+- [`traceipt-verify`](https://github.com/bluetieroperations-create/traceipt-verify) — independent verifier for Traceipt receipts: `npx traceipt-verify receipt.json` ([npm](https://www.npmjs.com/package/traceipt-verify)). Zero dependencies; proves a receipt without the Traceipt server.
+
 - [`blackwall-sdk`](https://github.com/bluetieroperations-create/blackwall-sdk) — Python SDK ([PyPI](https://pypi.org/project/blackwall-sdk/))
 - [`blackwall-mcp`](https://github.com/bluetieroperations-create/blackwall-mcp) — MCP server for Claude, Cursor, Windsurf, and any MCP host ([npm](https://www.npmjs.com/package/blackwall-mcp))
 - [`blackwall-integrations`](https://github.com/bluetieroperations-create/blackwall-integrations) — drop-in guards for LangChain, CrewAI, AutoGen, Vercel AI SDK, Stripe, PayPal, Coinbase, and more
