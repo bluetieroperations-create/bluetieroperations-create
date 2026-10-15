@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.bluetier.flippercompanion.mobile.ble.BleConnection
+import com.bluetier.flippercompanion.mobile.ble.BondState
 import com.bluetier.flippercompanion.mobile.ble.BleDeviceInfo
 import com.bluetier.flippercompanion.mobile.ble.BleScanner
 import com.bluetier.flippercompanion.mobile.ble.ConnectionState
@@ -61,6 +62,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val reconnectAttempt: StateFlow<Int> = connection.reconnectAttempt
     val maxReconnectAttempts: Int get() = connection.maxReconnectAttempts
 
+    /** Pairing/bond state of the connected device. */
+    val bondState: StateFlow<BondState> = connection.bondState
+
     private val _selected = MutableStateFlow<SelectedCharacteristic?>(null)
     val selected: StateFlow<SelectedCharacteristic?> = _selected.asStateFlow()
 
@@ -106,6 +110,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         connection.disconnect()
         _connectedAddress.value = null
         _selected.value = null
+    }
+
+    /** Begin pairing with the connected device (Android shows the system dialog). */
+    fun pair() {
+        connection.createBond()
     }
 
     fun select(serviceUuid: UUID, charUuid: UUID) {

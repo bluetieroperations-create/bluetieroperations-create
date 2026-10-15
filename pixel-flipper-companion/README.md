@@ -18,6 +18,7 @@ starter scaffold — buildable in Android Studio — not a finished product.
 | BLE scan | ✅ `BleScanner` | ✅ `WearBleScanner` | both platforms expose BLE to apps |
 | BLE connect + GATT read/write/notify | ✅ `BleConnection` + GATT browser UI | ❌ (scaffold: phone only) | serial op queue; API 33 dual-path |
 | Auto-reconnect + MTU negotiation | ✅ backoff retries, re-armed notifications, MTU up to 517 | ❌ | see `BleConnection` |
+| Bonding / pairing | ✅ `createBond()` + bond-state tracking, system pairing dialog | ❌ | needed for encrypted characteristics |
 | Trigger phone from wrist | — | ✅ `PhoneConnector` | Wearable Data Layer messaging |
 | Sub-GHz / 125 kHz / IR | ⚠️ USB-C OTG dongle only | ❌ no USB port | out of scope for this scaffold |
 
@@ -50,6 +51,15 @@ pixel-flipper-companion/
     retries with exponential backoff (1 s → 16 s, 5 attempts by default), then
     re-arms the notification subscriptions that were active. Tunable via the
     `autoReconnect` / `maxReconnectAttempts` / `desiredMtu` constructor params.
+  - **Bonding / pairing:** `createBond()` starts pairing (Android shows the
+    system passkey/confirm dialog); bond state is tracked via the
+    `ACTION_BOND_STATE_CHANGED` broadcast and exposed as a `StateFlow`. Set the
+    `autoBond` constructor param to pair automatically on connect. A bond is a
+    system-level pairing the user manages in Settings and persists across
+    connections, so `disconnect()` deliberately does not remove it — and nor
+    does the app (there is no public remove-bond API; removal is a Settings
+    action). The GATT stack also triggers pairing on its own when you access an
+    encrypted characteristic.
 - `mobile/.../ui/GattScreen.kt` — GATT browser: services/characteristics with
   Read / Write / Notify controls and a live event log.
 - `mobile/.../wear/PhoneMessageListenerService.kt` — receives watch triggers.

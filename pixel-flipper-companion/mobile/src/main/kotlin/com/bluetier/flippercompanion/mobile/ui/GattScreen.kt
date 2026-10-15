@@ -31,6 +31,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bluetier.flippercompanion.mobile.ble.BleConnection
+import com.bluetier.flippercompanion.mobile.ble.BondState
 import com.bluetier.flippercompanion.mobile.ble.ConnectionState
 import com.bluetier.flippercompanion.mobile.ble.GattCharacteristicInfo
 import java.util.UUID
@@ -48,6 +49,7 @@ fun GattScreen(viewModel: MainViewModel, address: String, onBack: () -> Unit) {
     val log by viewModel.gattLog.collectAsStateWithLifecycle()
     val mtu by viewModel.mtu.collectAsStateWithLifecycle()
     val reconnectAttempt by viewModel.reconnectAttempt.collectAsStateWithLifecycle()
+    val bondState by viewModel.bondState.collectAsStateWithLifecycle()
 
     val notifying = remember { mutableStateMapOf<UUID, Boolean>() }
     var writeHex by remember { mutableStateOf("") }
@@ -69,6 +71,8 @@ fun GattScreen(viewModel: MainViewModel, address: String, onBack: () -> Unit) {
                 )
             }
         }
+
+        BondRow(bondState = bondState, onPair = viewModel::pair)
 
         if (state == ConnectionState.Ready) {
             LazyColumn(
@@ -163,6 +167,32 @@ private fun CharacteristicCard(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun BondRow(bondState: BondState, onPair: () -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Pairing", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    when (bondState) {
+                        BondState.Bonded -> "Paired (bonded)"
+                        BondState.Bonding -> "Pairing…"
+                        BondState.None -> "Not paired"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Button(
+                onClick = onPair,
+                enabled = bondState == BondState.None,
+            ) { Text("Pair") }
         }
     }
 }

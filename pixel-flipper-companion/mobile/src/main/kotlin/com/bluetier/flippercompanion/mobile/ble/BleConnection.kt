@@ -9,10 +9,14 @@ import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.bluetooth.BluetoothStatusCodes
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import androidx.core.content.ContextCompat
 import java.util.UUID
 import kotlin.math.min
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -24,6 +28,9 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /** High-level connection state surfaced to the UI. */
 enum class ConnectionState { Disconnected, Connecting, Discovering, Ready, Reconnecting, Failed }
+
+/** Pairing/bond state of the remote device, mirroring BluetoothDevice.BOND_*. */
+enum class BondState { None, Bonding, Bonded }
 
 /** A characteristic flattened with the capabilities the UI cares about. */
 data class GattCharacteristicInfo(
@@ -75,6 +82,8 @@ class BleConnection(
     private val autoReconnect: Boolean = true,
     val maxReconnectAttempts: Int = 5,
     private val desiredMtu: Int = MAX_ATT_MTU,
+    /** When true, [connect] initiates bonding right away if the device isn't bonded yet. */
+    private val autoBond: Boolean = false,
 ) {
 
     private val _state = MutableStateFlow(ConnectionState.Disconnected)
@@ -96,6 +105,11 @@ class BleConnection(
     /** 0 when not reconnecting; otherwise the 1-based attempt in progress. */
     val reconnectAttempt: StateFlow<Int> = _reconnectAttempt.asStateFlow()
 
+    private val _bondState = MutableStateFlow(BondState.None)
+
+    /** Current pairing/bond state of the connected (or connecting) device. */
+    val bondState: StateFlow<BondState> = _bondState.asStateFlow()
+
     // Connection bookkeeping. Confined to the main thread: public calls come from
     // the UI, and GATT callbacks that touch it are re-posted via [onMain].
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -103,7 +117,11 @@ class BleConnection(
 
     /** The device the user wants to be connected to; null after an explicit [disconnect]. */
     private var targetAddress: String? = null
+    private var device: BluetoothDevice? = null
     private var discoveryStarted = false
+
+    /** True while [bondReceiver] is registered, so we unregister exactly once. */
+    private var bondReceiverRegistered = false
 
     /** Subscriptions to re-arm after a reconnect, keyed by (service, characteristic). */
     private val activeNotifications = LinkedHashSet<Pair<UUID, UUID>>()
@@ -125,18 +143,50 @@ class BleConnection(
      * address is invalid; otherwise progress is reported through [state].
      */
     fun connect(address: String): Boolean {
-        if (remoteDevice(address) == null) return false
+        val dev = remoteDevice(address) ?: return false
         disconnect()
         targetAddress = address
+        device = dev
+        _bondState.value = dev.bondState.toBondState()
+        registerBondReceiver()
+        if (autoBond && _bondState.value == BondState.None) createBond()
         openGatt(address)
         return true
     }
 
-    /** Tears the link down and cancels any pending reconnect. */
+    /**
+     * Initiates pairing with the connected device. Returns false if there is no
+     * device, it is already bonded or bonding, or the platform rejected the
+     * request. Progress is reported through [bondState]; Android shows the system
+     * pairing dialog when the peer requires confirmation or a passkey.
+     */
+    fun createBond(): Boolean {
+        val dev = device ?: return false
+        return when (dev.bondState) {
+            BluetoothDevice.BOND_BONDED -> {
+                _events.tryEmit(GattEvent.Info("Already paired"))
+                false
+            }
+            BluetoothDevice.BOND_BONDING -> false
+            else -> {
+                val started = runCatching { dev.createBond() }.getOrDefault(false)
+                if (!started) _events.tryEmit(GattEvent.Error("Could not start pairing"))
+                started
+            }
+        }
+    }
+
+    /**
+     * Tears the link down and cancels any pending reconnect. Does not remove an
+     * existing bond — a bond is a system-level pairing the user manages in
+     * Settings, and it persists across connections by design.
+     */
     fun disconnect() {
         targetAddress = null
+        device = null
         mainHandler.removeCallbacks(reconnectRunnable)
         mainHandler.removeCallbacks(mtuFallback)
+        unregisterBondReceiver()
         clearQueue()
         activeNotifications.clear()
         gatt?.let {
@@ -146,6 +196,7 @@ class BleConnection(
         gatt = null
         resetLinkState()
         _reconnectAttempt.value = 0
+        _bondState.value = BondState.None
         _state.value = ConnectionState.Disconnected
     }
 
@@ -316,6 +367,71 @@ class BleConnection(
         val adapter = (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
         if (adapter == null || !adapter.isEnabled) return null
         return runCatching { adapter.getRemoteDevice(address) }.getOrNull()
+    }
+
+    // --- Bonding -------------------------------------------------------------
+
+    /**
+     * Receives ACTION_BOND_STATE_CHANGED for the target device and mirrors it
+     * into [bondState]. Registered only while a connection is wanted. The bond
+     * broadcast is a protected system broadcast, so the receiver is registered
+     * NOT_EXPORTED.
+     */
+    private val bondReceiver = object : BroadcastReceiver() {
+        override fun onReceive(ctx: Context?, intent: Intent?) {
+            if (intent?.action != BluetoothDevice.ACTION_BOND_STATE_CHANGED) return
+            val changed = intent.bluetoothDevice() ?: return
+            if (changed.address != targetAddress) return
+
+            val state = intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.ERROR)
+            val previous = intent.getIntExtra(
+                BluetoothDevice.EXTRA_PREVIOUS_BOND_STATE,
+                BluetoothDevice.ERROR,
+            )
+            mainHandler.post {
+                if (changed.address != targetAddress) return@post
+                _bondState.value = state.toBondState()
+                when (state) {
+                    BluetoothDevice.BOND_BONDED -> _events.tryEmit(GattEvent.Info("Paired"))
+                    BluetoothDevice.BOND_NONE ->
+                        if (previous == BluetoothDevice.BOND_BONDING) {
+                            _events.tryEmit(GattEvent.Error("Pairing failed or was rejected"))
+                        }
+                    BluetoothDevice.BOND_BONDING -> _events.tryEmit(GattEvent.Info("Pairing…"))
+                }
+            }
+        }
+    }
+
+    private fun registerBondReceiver() {
+        if (bondReceiverRegistered) return
+        ContextCompat.registerReceiver(
+            context,
+            bondReceiver,
+            IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        bondReceiverRegistered = true
+    }
+
+    private fun unregisterBondReceiver() {
+        if (!bondReceiverRegistered) return
+        runCatching { context.unregisterReceiver(bondReceiver) }
+        bondReceiverRegistered = false
+    }
+
+    @Suppress("DEPRECATION")
+    private fun Intent.bluetoothDevice(): BluetoothDevice? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+        } else {
+            getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+        }
+
+    private fun Int.toBondState(): BondState = when (this) {
+        BluetoothDevice.BOND_BONDED -> BondState.Bonded
+        BluetoothDevice.BOND_BONDING -> BondState.Bonding
+        else -> BondState.None
     }
 
     /**
