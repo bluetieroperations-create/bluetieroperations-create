@@ -6,8 +6,12 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.bluetier.flippercompanion.mobile.nfc.NfcReader
@@ -35,15 +39,21 @@ class MainActivity : ComponentActivity() {
             nfcReader.lastTag.collect { tag -> tag?.let(viewModel::onNfcTag) }
         }
 
+        // Opt in on every API level so the UI's safe-drawing padding behaves the
+        // same on older devices as on Android 15+, where it is enforced.
+        enableEdgeToEdge()
         setContent {
             CompanionScreen(
                 viewModel = viewModel,
                 nfcSupported = nfcReader.isSupported,
-                nfcEnabled = nfcReader.isEnabled,
+                nfcEnabled = nfcEnabled,
                 onToggleScan = ::onToggleScan,
             )
         }
     }
+
+    /** Re-read on resume so returning from NFC settings updates the status. */
+    private var nfcEnabled by mutableStateOf(false)
 
     private fun onToggleScan() {
         if (viewModel.scanning.value) {
@@ -69,6 +79,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        nfcEnabled = nfcReader.isEnabled
         nfcReader.enable()
     }
 

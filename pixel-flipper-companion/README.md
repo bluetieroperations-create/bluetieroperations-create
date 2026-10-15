@@ -86,6 +86,35 @@ phone app's companion.
 > download dependencies and may nudge plugin/library versions in
 > `gradle/libs.versions.toml` — accept the IDE's suggested updates if prompted.
 
+## Tests
+
+```bash
+./gradlew :mobile:testDebugUnitTest :shared:testDebugUnitTest
+```
+
+JVM unit tests cover the pure logic — hex parsing, NFC Text-record decoding,
+reconnect backoff, the watch action contract — plus a contract test that pins
+the listener's `pathPrefix` and advertised capability in XML to `WearContract`
+(if those strings drift, watch messages are silently dropped). The BLE/NFC
+classes themselves need a device (or Robolectric) to exercise.
+
+## Known limitations
+
+- **HCE vs. reader mode:** while the phone app is in the foreground, NFC reader
+  mode is on, and Android disables card emulation in reader mode. HCE answers
+  readers only when the app is in the background.
+- **Watch NFC actions are display-only:** "Read NFC" / "Emulate card" from the
+  watch are shown on the phone but don't change its NFC mode, and
+  `WearContract.PATH_RESULT` is not used yet, so the watch can't confirm the
+  phone acted.
+- **Watch triggers need the phone UI alive:** triggers go to the phone's
+  ViewModel, so they're dropped if the phone app isn't running. A foreground
+  service would fix this.
+- **Beacon filtering:** `BLUETOOTH_SCAN` is declared `neverForLocation`, so
+  Android filters some beacon advertisements out of scan results.
+- **HCE while locked:** `requireDeviceUnlock="false"` lets the sample applet
+  answer while the phone is locked; set it to `true` for anything sensitive.
+
 ## Scope & legitimate use
 
 Build and test against **tags, cards, and devices you own or are authorized to

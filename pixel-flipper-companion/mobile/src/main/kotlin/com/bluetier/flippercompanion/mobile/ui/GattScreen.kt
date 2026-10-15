@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -32,9 +33,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bluetier.flippercompanion.mobile.ble.BleConnection
 import com.bluetier.flippercompanion.mobile.ble.BondState
+import com.bluetier.flippercompanion.mobile.ble.CharRef
 import com.bluetier.flippercompanion.mobile.ble.ConnectionState
 import com.bluetier.flippercompanion.mobile.ble.GattCharacteristicInfo
-import java.util.UUID
 
 /**
  * GATT browser: lists discovered services/characteristics with read, write, and
@@ -51,13 +52,14 @@ fun GattScreen(viewModel: MainViewModel, address: String, onBack: () -> Unit) {
     val reconnectAttempt by viewModel.reconnectAttempt.collectAsStateWithLifecycle()
     val bondState by viewModel.bondState.collectAsStateWithLifecycle()
 
-    val notifying = remember { mutableStateMapOf<UUID, Boolean>() }
+    val notifying = remember { mutableStateMapOf<CharRef, Boolean>() }
     var writeHex by remember { mutableStateOf("") }
     var withResponse by remember { mutableStateOf(true) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .safeDrawingPadding() // edge-to-edge is enforced at targetSdk 35
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -80,24 +82,30 @@ fun GattScreen(viewModel: MainViewModel, address: String, onBack: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 services.forEach { service ->
-                    item(key = "svc-${service.uuid}") {
+                    // Keys must be unique across the whole list (a repeat crashes
+                    // Compose) and Bundle-saveable, so build Strings from instance
+                    // ids: UUIDs repeat on real devices (e.g. HID Report 0x2A4D).
+                    item(key = "svc-${service.instanceId}-${service.uuid}") {
                         Text(
                             "Service ${service.uuid}",
                             style = MaterialTheme.typography.titleSmall,
                             fontFamily = FontFamily.Monospace,
                         )
                     }
-                    items(service.characteristics, key = { it.uuid.toString() }) { ch ->
+                    items(
+                        service.characteristics,
+                        key = { "chr-${it.ref.serviceInstance}-${it.ref.charInstance}-${it.uuid}" },
+                    ) { ch ->
                         CharacteristicCard(
                             ch = ch,
-                            isSelected = selected?.charUuid == ch.uuid,
-                            isNotifying = notifying[ch.uuid] == true,
-                            onSelect = { viewModel.select(ch.serviceUuid, ch.uuid) },
-                            onRead = { viewModel.read(ch.serviceUuid, ch.uuid) },
+                            isSelected = selected == ch.ref,
+                            isNotifying = notifying[ch.ref] == true,
+                            onSelect = { viewModel.select(ch.ref) },
+                            onRead = { viewModel.read(ch.ref) },
                             onToggleNotify = {
-                                val enable = notifying[ch.uuid] != true
-                                notifying[ch.uuid] = enable
-                                viewModel.toggleNotify(ch.serviceUuid, ch.uuid, enable)
+                                val enable = notifying[ch.ref] != true
+                                notifying[ch.ref] = enable
+                                viewModel.toggleNotify(ch.ref, enable)
                             },
                         )
                     }
@@ -107,7 +115,7 @@ fun GattScreen(viewModel: MainViewModel, address: String, onBack: () -> Unit) {
             WritePanel(
                 enabled = selected?.let { sel ->
                     services.flatMap { it.characteristics }
-                        .firstOrNull { it.uuid == sel.charUuid }
+                        .firstOrNull { it.ref == sel }
                         ?.let { it.canWrite || it.canWriteNoResponse } == true
                 } ?: false,
                 maxNoResponseBytes = mtu - BleConnection.ATT_HEADER_BYTES,
@@ -116,7 +124,7 @@ fun GattScreen(viewModel: MainViewModel, address: String, onBack: () -> Unit) {
                 withResponse = withResponse,
                 onWithResponseChange = { withResponse = it },
                 onWrite = {
-                    selected?.let { viewModel.write(it.serviceUuid, it.charUuid, writeHex, withResponse) }
+                    selected?.let { viewModel.write(it, writeHex, withResponse) }
                 },
             )
         } else {

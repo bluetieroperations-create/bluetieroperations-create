@@ -10,7 +10,8 @@ object Hex {
     fun decode(text: String): ByteArray? {
         val cleaned = text.filterNot { it.isWhitespace() || it == ':' }
         if (cleaned.isEmpty() || cleaned.length % 2 != 0) return null
-        if (!cleaned.all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' }) return null
+        // ASCII only: Char.isDigit() would also accept e.g. Arabic-Indic digits.
+        if (!cleaned.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }) return null
         return ByteArray(cleaned.length / 2) { i ->
             cleaned.substring(i * 2, i * 2 + 2).toInt(16).toByte()
         }

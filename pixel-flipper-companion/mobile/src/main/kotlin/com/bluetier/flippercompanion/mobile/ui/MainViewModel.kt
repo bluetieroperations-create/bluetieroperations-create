@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.bluetier.flippercompanion.mobile.ble.BleConnection
 import com.bluetier.flippercompanion.mobile.ble.BondState
 import com.bluetier.flippercompanion.mobile.ble.BleDeviceInfo
+import com.bluetier.flippercompanion.mobile.ble.CharRef
 import com.bluetier.flippercompanion.mobile.ble.BleScanner
 import com.bluetier.flippercompanion.mobile.ble.ConnectionState
 import com.bluetier.flippercompanion.mobile.ble.GattEvent
@@ -23,8 +24,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-/** Identifies the characteristic the write controls currently target. */
-data class SelectedCharacteristic(val serviceUuid: UUID, val charUuid: UUID)
 
 /** Drives the phone UI and reacts to actions triggered from the watch. */
 class MainViewModel(app: Application) : AndroidViewModel(app) {
@@ -65,8 +64,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Pairing/bond state of the connected device. */
     val bondState: StateFlow<BondState> = connection.bondState
 
-    private val _selected = MutableStateFlow<SelectedCharacteristic?>(null)
-    val selected: StateFlow<SelectedCharacteristic?> = _selected.asStateFlow()
+    /** The characteristic the write controls currently target. */
+    private val _selected = MutableStateFlow<CharRef?>(null)
+    val selected: StateFlow<CharRef?> = _selected.asStateFlow()
 
     /** Rolling human-readable log of GATT reads/writes/notifications. */
     private val _gattLog = MutableStateFlow<List<String>>(emptyList())
@@ -117,23 +117,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         connection.createBond()
     }
 
-    fun select(serviceUuid: UUID, charUuid: UUID) {
-        _selected.value = SelectedCharacteristic(serviceUuid, charUuid)
+    fun select(ref: CharRef) {
+        _selected.value = ref
     }
 
-    fun read(serviceUuid: UUID, charUuid: UUID) =
-        connection.readCharacteristic(serviceUuid, charUuid)
+    fun read(ref: CharRef) = connection.readCharacteristic(ref)
 
-    fun toggleNotify(serviceUuid: UUID, charUuid: UUID, enable: Boolean) =
-        connection.setNotifications(serviceUuid, charUuid, enable)
+    fun toggleNotify(ref: CharRef, enable: Boolean) = connection.setNotifications(ref, enable)
 
     /** @return false if [hexInput] is not valid hex. */
-    fun write(serviceUuid: UUID, charUuid: UUID, hexInput: String, withResponse: Boolean): Boolean {
+    fun write(ref: CharRef, hexInput: String, withResponse: Boolean): Boolean {
         val bytes = Hex.decode(hexInput) ?: run {
             log("Write ignored: '$hexInput' is not valid hex")
             return false
         }
-        connection.writeCharacteristic(serviceUuid, charUuid, bytes, withResponse)
+        connection.writeCharacteristic(ref, bytes, withResponse)
         return true
     }
 

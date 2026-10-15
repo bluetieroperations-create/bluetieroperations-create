@@ -58,4 +58,6 @@ dependencies {
 
     implementation(libs.play.services.wearable)
     implementation(libs.kotlinx.coroutines.android)
+
+    testImplementation(libs.junit)
 }

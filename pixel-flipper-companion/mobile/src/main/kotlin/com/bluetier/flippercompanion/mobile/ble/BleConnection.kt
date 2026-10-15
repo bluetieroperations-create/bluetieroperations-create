@@ -32,20 +32,46 @@ enum class ConnectionState { Disconnected, Connecting, Discovering, Ready, Recon
 /** Pairing/bond state of the remote device, mirroring BluetoothDevice.BOND_*. */
 enum class BondState { None, Bonding, Bonded }
 
+/**
+ * Identifies one characteristic instance on the peer. UUIDs alone are not unique:
+ * GATT allows several services/characteristics with the same UUID (e.g. an HID
+ * keyboard's multiple 0x2A4D Report characteristics), so the attribute-handle
+ * based instance ids are part of the identity. Handles are stable for a given
+ * peer firmware, so a ref stays valid across reconnects.
+ */
+data class CharRef(
+    val serviceUuid: UUID,
+    val serviceInstance: Int,
+    val charUuid: UUID,
+    val charInstance: Int,
+)
+
 /** A characteristic flattened with the capabilities the UI cares about. */
 data class GattCharacteristicInfo(
-    val serviceUuid: UUID,
-    val uuid: UUID,
+    val ref: CharRef,
     val canRead: Boolean,
     val canWrite: Boolean,
     val canWriteNoResponse: Boolean,
     val canNotify: Boolean,
-)
+) {
+    val uuid: UUID get() = ref.charUuid
+}
 
 data class GattServiceInfo(
     val uuid: UUID,
+    val instanceId: Int,
     val characteristics: List<GattCharacteristicInfo>,
 )
+
+/**
+ * Delay before reconnect attempt [attempt] (1-based): 1s, 2s, 4s… capped at 30s.
+ * Top-level so it can be unit-tested without Android.
+ */
+internal fun reconnectDelayMs(attempt: Int): Long {
+    require(attempt >= 1) { "attempt is 1-based" }
+    val shift = (attempt - 1).coerceAtMost(30) // keep the shift from overflowing
+    return min(BleConnection.BASE_BACKOFF_MS shl shift, BleConnection.MAX_BACKOFF_MS)
+}
 
 /** One-shot results of GATT operations, consumed by the UI as a stream. */
 sealed interface GattEvent {
@@ -71,8 +97,8 @@ sealed interface GattEvent {
  * Android's GATT stack tolerates exactly one outstanding operation at a time, so
  * every read/write/descriptor-write goes through a serial [enqueue] queue and the
  * next op only starts once the previous one's callback has fired. Queued ops
- * resolve their characteristic by UUID when they run, so they stay valid across
- * a reconnect.
+ * resolve their characteristic by [CharRef] when they run, so they stay valid
+ * across a reconnect.
  *
  * Requires BLUETOOTH_CONNECT (API 31+); the caller must hold it before [connect].
  */
@@ -123,8 +149,11 @@ class BleConnection(
     /** True while [bondReceiver] is registered, so we unregister exactly once. */
     private var bondReceiverRegistered = false
 
-    /** Subscriptions to re-arm after a reconnect, keyed by (service, characteristic). */
-    private val activeNotifications = LinkedHashSet<Pair<UUID, UUID>>()
+    /** Subscriptions to re-arm after a reconnect. */
+    private val activeNotifications = LinkedHashSet<CharRef>()
+
+    /** [autoBond] fires at most once per [connect], not on every reconnect. */
+    private var autoBondTried = false
 
     private val reconnectRunnable = Runnable { targetAddress?.let { openGatt(it) } }
 
@@ -149,7 +178,7 @@ class BleConnection(
         device = dev
         _bondState.value = dev.bondState.toBondState()
         registerBondReceiver()
-        if (autoBond && _bondState.value == BondState.None) createBond()
+        autoBondTried = false
         openGatt(address)
         return true
     }
@@ -200,12 +229,20 @@ class BleConnection(
         _state.value = ConnectionState.Disconnected
     }
 
-    fun readCharacteristic(serviceUuid: UUID, charUuid: UUID) = enqueue {
-        val (g, ch) = resolve(serviceUuid, charUuid) ?: return@enqueue
+    fun readCharacteristic(ref: CharRef) = enqueue {
+        val (g, ch) = resolve(ref) ?: return@enqueue
         if (!g.readCharacteristic(ch)) failOperation("Read could not be started")
     }
 
-    fun writeCharacteristic(serviceUuid: UUID, charUuid: UUID, value: ByteArray, withResponse: Boolean) {
+    fun writeCharacteristic(ref: CharRef, value: ByteArray, withResponse: Boolean) {
+        if (value.size > MAX_ATTR_VALUE_LEN) {
+            // ATT caps an attribute value at 512 bytes, and BluetoothGatt throws
+            // IllegalArgumentException above that (which would crash the app).
+            _events.tryEmit(
+                GattEvent.Error("${value.size} B exceeds the $MAX_ATTR_VALUE_LEN B GATT attribute limit"),
+            )
+            return
+        }
         val maxPayload = _mtu.value - ATT_HEADER_BYTES
         if (!withResponse && value.size > maxPayload) {
             // A Write Command must fit one packet; the stack would truncate or drop
@@ -223,7 +260,7 @@ class BleConnection(
             BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
         }
         enqueue {
-            val (g, ch) = resolve(serviceUuid, charUuid) ?: return@enqueue
+            val (g, ch) = resolve(ref) ?: return@enqueue
             val started = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 g.writeCharacteristic(ch, value, writeType) == BluetoothStatusCodes.SUCCESS
             } else {
@@ -238,14 +275,13 @@ class BleConnection(
         }
     }
 
-    fun setNotifications(serviceUuid: UUID, charUuid: UUID, enable: Boolean) {
-        val key = serviceUuid to charUuid
-        if (enable) activeNotifications += key else activeNotifications -= key
-        enqueueNotify(serviceUuid, charUuid, enable)
+    fun setNotifications(ref: CharRef, enable: Boolean) {
+        if (enable) activeNotifications += ref else activeNotifications -= ref
+        enqueueNotify(ref, enable)
     }
 
-    private fun enqueueNotify(serviceUuid: UUID, charUuid: UUID, enable: Boolean) = enqueue {
-        val (g, ch) = resolve(serviceUuid, charUuid) ?: return@enqueue
+    private fun enqueueNotify(ref: CharRef, enable: Boolean) = enqueue {
+        val (g, ch) = resolve(ref) ?: return@enqueue
         val cccd = ch.getDescriptor(CCCD_UUID)
         if (cccd == null) {
             failOperation("Characteristic has no CCCD descriptor")
@@ -285,6 +321,13 @@ class BleConnection(
     private fun onConnected(g: BluetoothGatt) {
         _state.value = ConnectionState.Discovering
         discoveryStarted = false
+        // Pair only once the LE link is up: calling createBond() before connectGatt()
+        // races two connection attempts, and on dual-mode peers may bond over
+        // classic Bluetooth instead of LE.
+        if (autoBond && !autoBondTried && _bondState.value == BondState.None) {
+            autoBondTried = true
+            createBond()
+        }
         // Ask for the largest MTU before anything else: fewer packets per
         // read/write/notify. Newer Android releases may negotiate 517 whatever we
         // ask for, so only the value reported to onMtuChanged is trusted.
@@ -306,6 +349,7 @@ class BleConnection(
         _services.value = g.services.map { service ->
             GattServiceInfo(
                 uuid = service.uuid,
+                instanceId = service.instanceId,
                 characteristics = service.characteristics.map { it.toInfo() },
             )
         }
@@ -318,7 +362,7 @@ class BleConnection(
             _events.tryEmit(
                 GattEvent.Info("Re-arming ${activeNotifications.size} notification subscription(s)"),
             )
-            activeNotifications.toList().forEach { (svc, ch) -> enqueueNotify(svc, ch, true) }
+            activeNotifications.toList().forEach { enqueueNotify(it, true) }
         }
     }
 
@@ -348,7 +392,7 @@ class BleConnection(
             return
         }
 
-        val delayMs = min(BASE_BACKOFF_MS shl (attempt - 1), MAX_BACKOFF_MS)
+        val delayMs = reconnectDelayMs(attempt)
         _reconnectAttempt.value = attempt
         _state.value = ConnectionState.Reconnecting
         _events.tryEmit(
@@ -373,9 +417,13 @@ class BleConnection(
 
     /**
      * Receives ACTION_BOND_STATE_CHANGED for the target device and mirrors it
-     * into [bondState]. Registered only while a connection is wanted. The bond
-     * broadcast is a protected system broadcast, so the receiver is registered
-     * NOT_EXPORTED.
+     * into [bondState]. Registered only while a connection is wanted.
+     *
+     * Must be EXPORTED: the broadcast is sent by the Bluetooth app (shared UID
+     * android.uid.bluetooth), not the system server, and Android only delivers to
+     * a NOT_EXPORTED receiver from root/system or the app itself. Exporting is
+     * safe because BOND_STATE_CHANGED is a protected broadcast (declared in the
+     * framework manifest), so no other app can spoof it.
      */
     private val bondReceiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context?, intent: Intent?) {
@@ -409,7 +457,7 @@ class BleConnection(
             context,
             bondReceiver,
             IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED),
-            ContextCompat.RECEIVER_NOT_EXPORTED,
+            ContextCompat.RECEIVER_EXPORTED,
         )
         bondReceiverRegistered = true
     }
@@ -602,21 +650,26 @@ class BleConnection(
     }
 
     /** Looks a characteristic up on the *current* link; fails the op if it's gone. */
-    private fun resolve(serviceUuid: UUID, charUuid: UUID): Pair<BluetoothGatt, BluetoothGattCharacteristic>? {
+    private fun resolve(ref: CharRef): Pair<BluetoothGatt, BluetoothGattCharacteristic>? {
         val g = gatt ?: run {
             failOperation("Not connected")
             return null
         }
-        val ch = g.getService(serviceUuid)?.getCharacteristic(charUuid) ?: run {
-            failOperation("Characteristic $charUuid not found")
-            return null
-        }
+        // Match on instance id as well as UUID: getService()/getCharacteristic()
+        // return the first UUID match, which is the wrong one for duplicates.
+        val ch = g.services
+            .firstOrNull { it.uuid == ref.serviceUuid && it.instanceId == ref.serviceInstance }
+            ?.characteristics
+            ?.firstOrNull { it.uuid == ref.charUuid && it.instanceId == ref.charInstance }
+            ?: run {
+                failOperation("Characteristic ${ref.charUuid} not found")
+                return null
+            }
         return g to ch
     }
 
     private fun BluetoothGattCharacteristic.toInfo() = GattCharacteristicInfo(
-        serviceUuid = service.uuid,
-        uuid = uuid,
+        ref = CharRef(service.uuid, service.instanceId, uuid, instanceId),
         canRead = properties and BluetoothGattCharacteristic.PROPERTY_READ != 0,
         canWrite = properties and BluetoothGattCharacteristic.PROPERTY_WRITE != 0,
         canWriteNoResponse = properties and
@@ -643,8 +696,11 @@ class BleConnection(
         /** ATT opcode + handle overhead per packet: payload = MTU - 3. */
         const val ATT_HEADER_BYTES = 3
 
+        /** Max length of a GATT attribute value (Bluetooth Core spec; BluetoothGatt enforces it). */
+        const val MAX_ATTR_VALUE_LEN = 512
+
         private const val MTU_TIMEOUT_MS = 3_000L
-        private const val BASE_BACKOFF_MS = 1_000L
-        private const val MAX_BACKOFF_MS = 30_000L
+        internal const val BASE_BACKOFF_MS = 1_000L
+        internal const val MAX_BACKOFF_MS = 30_000L
     }
 }

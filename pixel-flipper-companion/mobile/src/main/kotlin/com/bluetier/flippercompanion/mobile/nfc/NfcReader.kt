@@ -1,6 +1,7 @@
 package com.bluetier.flippercompanion.mobile.nfc
 
 import android.app.Activity
+import android.nfc.NdefRecord
 import android.nfc.NfcAdapter
 import android.nfc.Tag
 import android.nfc.tech.Ndef
@@ -39,8 +40,10 @@ class NfcReader(private val activity: Activity) {
         val flags = NfcAdapter.FLAG_READER_NFC_A or
             NfcAdapter.FLAG_READER_NFC_B or
             NfcAdapter.FLAG_READER_NFC_F or
-            NfcAdapter.FLAG_READER_NFC_V or
-            NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK
+            NfcAdapter.FLAG_READER_NFC_V
+        // No FLAG_READER_SKIP_NDEF_CHECK: the platform only adds the Ndef tech to
+        // the Tag when it runs its NDEF check, so skipping it makes Ndef.get()
+        // return null for every tag.
         adapter.enableReaderMode(activity, ::onTagDiscovered, flags, Bundle())
     }
 
@@ -56,15 +59,24 @@ class NfcReader(private val activity: Activity) {
         )
     }
 
+    /** Uses the message the platform read during its NDEF check — no tag I/O needed. */
     private fun readNdefText(tag: Tag): String? {
-        val ndef = Ndef.get(tag) ?: return null
-        return runCatching {
-            ndef.connect()
-            val message = ndef.ndefMessage ?: return@runCatching null
-            message.records.joinToString("\n") { record ->
-                String(record.payload, Charsets.UTF_8).trim()
-            }
-        }.also { runCatching { ndef.close() } }.getOrNull()
+        val message = Ndef.get(tag)?.cachedNdefMessage ?: return null
+        return message.records.joinToString("\n") { describe(it) }
+    }
+
+    private fun describe(record: NdefRecord): String {
+        record.toUri()?.let { return it.toString() } // URI + Smart Poster, prefix decoded
+        if (record.tnf == NdefRecord.TNF_WELL_KNOWN && record.type.contentEquals(NdefRecord.RTD_TEXT)) {
+            NdefText.decode(record.payload)?.let { return it }
+        }
+        if (record.tnf == NdefRecord.TNF_EMPTY) return "(empty record)"
+        val mime = record.toMimeType()
+        return when {
+            mime != null && mime.startsWith("text/") -> String(record.payload, Charsets.UTF_8)
+            mime != null -> "$mime (${record.payload.size} B)"
+            else -> "TNF ${record.tnf} (${record.payload.size} B)"
+        }
     }
 
     private fun ByteArray.toHex(): String =
