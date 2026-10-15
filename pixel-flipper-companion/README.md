@@ -16,6 +16,7 @@ starter scaffold — buildable in Android Studio — not a finished product.
 | NFC read (13.56 MHz) | ✅ `NfcReader` (reader mode) | ❌ | Wear OS reserves NFC for Google Wallet |
 | NFC host-card emulation | ✅ `CardEmulationService` (HCE) | ❌ | emulate to readers you control |
 | BLE scan | ✅ `BleScanner` | ✅ `WearBleScanner` | both platforms expose BLE to apps |
+| BLE connect + GATT read/write/notify | ✅ `BleConnection` + GATT browser UI | ❌ (scaffold: phone only) | serial op queue; API 33 dual-path |
 | Trigger phone from wrist | — | ✅ `PhoneConnector` | Wearable Data Layer messaging |
 | Sub-GHz / 125 kHz / IR | ⚠️ USB-C OTG dongle only | ❌ no USB port | out of scope for this scaffold |
 
@@ -37,6 +38,11 @@ pixel-flipper-companion/
 - `mobile/.../nfc/NfcReader.kt` — NFC reader-mode tag reads (UID, tech, NDEF).
 - `mobile/.../hce/CardEmulationService.kt` — HCE applet (replace the sample AID/logic).
 - `mobile/.../ble/BleScanner.kt` — BLE scan as a `StateFlow`.
+- `mobile/.../ble/BleConnection.kt` — GATT client: connect, discover, read, write,
+  notifications. One serial operation queue (GATT allows a single in-flight op),
+  with dual-path handling for the API 33 callback/method changes.
+- `mobile/.../ui/GattScreen.kt` — GATT browser: services/characteristics with
+  Read / Write / Notify controls and a live event log.
 - `mobile/.../wear/PhoneMessageListenerService.kt` — receives watch triggers.
 - `wear/.../phone/PhoneConnector.kt` — discovers the phone by capability and sends triggers.
 

@@ -1,5 +1,6 @@
 package com.bluetier.flippercompanion.mobile.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,8 +22,8 @@ import com.bluetier.flippercompanion.mobile.ble.BleDeviceInfo
 import com.bluetier.flippercompanion.mobile.nfc.NfcTagInfo
 
 /**
- * Single-screen phone UI: NFC status/last-tag on top, BLE scanner below, with a
- * banner showing the most recent action the watch triggered.
+ * Root phone UI. Shows the NFC panel + BLE scanner, and switches to the GATT
+ * browser once a device connection is in progress.
  */
 @Composable
 fun CompanionScreen(
@@ -31,6 +32,13 @@ fun CompanionScreen(
     nfcEnabled: Boolean,
     onToggleScan: () -> Unit,
 ) {
+    val connectedAddress by viewModel.connectedAddress.collectAsStateWithLifecycle()
+
+    if (connectedAddress != null) {
+        GattScreen(viewModel = viewModel, address = connectedAddress!!, onBack = viewModel::disconnect)
+        return
+    }
+
     val scanning by viewModel.scanning.collectAsStateWithLifecycle()
     val devices by viewModel.devices.collectAsStateWithLifecycle()
     val nfcTag by viewModel.nfcTag.collectAsStateWithLifecycle()
@@ -60,12 +68,11 @@ fun CompanionScreen(
             Text(if (scanning) "Stop BLE scan" else "Start BLE scan")
         }
 
-        Text(
-            "BLE devices (${devices.size})",
-            style = MaterialTheme.typography.titleMedium,
-        )
+        Text("BLE devices (${devices.size}) — tap to connect", style = MaterialTheme.typography.titleMedium)
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(devices, key = { it.address }) { device -> BleRow(device) }
+            items(devices, key = { it.address }) { device ->
+                BleRow(device, onConnect = { viewModel.connect(device.address) })
+            }
         }
     }
 }
@@ -90,8 +97,12 @@ private fun NfcCard(supported: Boolean, enabled: Boolean, tag: NfcTagInfo?) {
 }
 
 @Composable
-private fun BleRow(device: BleDeviceInfo) {
-    Card(Modifier.fillMaxWidth()) {
+private fun BleRow(device: BleDeviceInfo, onConnect: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onConnect),
+    ) {
         Column(Modifier.padding(12.dp)) {
             Text(device.name ?: "(unnamed)", style = MaterialTheme.typography.titleSmall)
             Text(device.address, fontFamily = FontFamily.Monospace)
