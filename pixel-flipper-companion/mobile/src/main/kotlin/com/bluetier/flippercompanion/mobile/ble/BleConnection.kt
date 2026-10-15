@@ -1,17 +1,20 @@
 package com.bluetier.flippercompanion.mobile.ble
 
 import android.annotation.SuppressLint
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
+import android.bluetooth.BluetoothStatusCodes
 import android.content.Context
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import java.util.UUID
+import kotlin.math.min
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -20,7 +23,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /** High-level connection state surfaced to the UI. */
-enum class ConnectionState { Disconnected, Connecting, Discovering, Ready, Failed }
+enum class ConnectionState { Disconnected, Connecting, Discovering, Ready, Reconnecting, Failed }
 
 /** A characteristic flattened with the capabilities the UI cares about. */
 data class GattCharacteristicInfo(
@@ -42,22 +45,37 @@ sealed interface GattEvent {
     data class Read(val uuid: UUID, val value: ByteArray) : GattEvent
     data class Written(val uuid: UUID, val success: Boolean) : GattEvent
     data class Notification(val uuid: UUID, val value: ByteArray) : GattEvent
+    data class Info(val message: String) : GattEvent
     data class Error(val message: String) : GattEvent
 }
 
 /**
- * Wraps a single [BluetoothGatt] connection: connect, discover, read, write, and
- * subscribe to notifications.
+ * Wraps a single [BluetoothGatt] connection: connect, negotiate MTU, discover,
+ * read, write, and subscribe to notifications — and reconnect on its own when
+ * the link drops.
+ *
+ * Connection lifecycle (all state transitions run on the main thread):
+ * `Connecting → (requestMtu) → Discovering → Ready`. Any drop while the user
+ * still wants the link — including a failed first attempt, e.g. the common
+ * status 133 — closes the dead client and retries with exponential backoff
+ * (1s, 2s, 4s… capped at 30s) up to [maxReconnectAttempts]. After a successful
+ * reconnect, notification subscriptions that were active are re-armed.
  *
  * Android's GATT stack tolerates exactly one outstanding operation at a time, so
  * every read/write/descriptor-write goes through a serial [enqueue] queue and the
- * next op only starts once the previous one's callback has fired. All GATT calls
- * are posted to the main thread, which the platform expects.
+ * next op only starts once the previous one's callback has fired. Queued ops
+ * resolve their characteristic by UUID when they run, so they stay valid across
+ * a reconnect.
  *
  * Requires BLUETOOTH_CONNECT (API 31+); the caller must hold it before [connect].
  */
 @SuppressLint("MissingPermission")
-class BleConnection(private val context: Context) {
+class BleConnection(
+    private val context: Context,
+    private val autoReconnect: Boolean = true,
+    val maxReconnectAttempts: Int = 5,
+    private val desiredMtu: Int = MAX_ATT_MTU,
+) {
 
     private val _state = MutableStateFlow(ConnectionState.Disconnected)
     val state: StateFlow<ConnectionState> = _state.asStateFlow()
@@ -68,60 +86,101 @@ class BleConnection(private val context: Context) {
     private val _events = MutableSharedFlow<GattEvent>(extraBufferCapacity = 16)
     val events: SharedFlow<GattEvent> = _events.asSharedFlow()
 
+    private val _mtu = MutableStateFlow(DEFAULT_ATT_MTU)
+
+    /** Negotiated ATT MTU. The largest single write/notification payload is `mtu - 3`. */
+    val mtu: StateFlow<Int> = _mtu.asStateFlow()
+
+    private val _reconnectAttempt = MutableStateFlow(0)
+
+    /** 0 when not reconnecting; otherwise the 1-based attempt in progress. */
+    val reconnectAttempt: StateFlow<Int> = _reconnectAttempt.asStateFlow()
+
+    // Connection bookkeeping. Confined to the main thread: public calls come from
+    // the UI, and GATT callbacks that touch it are re-posted via [onMain].
+    private val mainHandler = Handler(Looper.getMainLooper())
     private var gatt: BluetoothGatt? = null
 
-    private val mainHandler = Handler(Looper.getMainLooper())
+    /** The device the user wants to be connected to; null after an explicit [disconnect]. */
+    private var targetAddress: String? = null
+    private var discoveryStarted = false
+
+    /** Subscriptions to re-arm after a reconnect, keyed by (service, characteristic). */
+    private val activeNotifications = LinkedHashSet<Pair<UUID, UUID>>()
+
+    private val reconnectRunnable = Runnable { targetAddress?.let { openGatt(it) } }
+
+    /** Proceeds to discovery if the peer never answers the MTU request. */
+    private val mtuFallback = Runnable { gatt?.let { startDiscovery(it) } }
+
+    // Serial operation queue (touched from binder threads too, hence the lock).
     private val opQueue = ArrayDeque<() -> Unit>()
     private var opInFlight = false
 
-    fun connect(address: String): Boolean {
-        val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
-        val adapter = manager?.adapter ?: return false
-        val device = runCatching { adapter.getRemoteDevice(address) }.getOrNull() ?: return false
+    @Volatile
+    private var queueGeneration = 0
 
+    /**
+     * Starts connecting to [address]. Returns false if Bluetooth is off or the
+     * address is invalid; otherwise progress is reported through [state].
+     */
+    fun connect(address: String): Boolean {
+        if (remoteDevice(address) == null) return false
         disconnect()
-        _state.value = ConnectionState.Connecting
-        gatt = device.connectGatt(context, false, callback, BluetoothDevice_TRANSPORT_LE)
-        return gatt != null
+        targetAddress = address
+        openGatt(address)
+        return true
     }
 
+    /** Tears the link down and cancels any pending reconnect. */
     fun disconnect() {
+        targetAddress = null
+        mainHandler.removeCallbacks(reconnectRunnable)
+        mainHandler.removeCallbacks(mtuFallback)
         clearQueue()
+        activeNotifications.clear()
         gatt?.let {
             runCatching { it.disconnect() }
             runCatching { it.close() }
         }
         gatt = null
-        _services.value = emptyList()
+        resetLinkState()
+        _reconnectAttempt.value = 0
         _state.value = ConnectionState.Disconnected
     }
 
-    fun readCharacteristic(serviceUuid: UUID, charUuid: UUID) {
-        val characteristic = characteristicOrError(serviceUuid, charUuid) ?: return
-        enqueue {
-            val started = gatt?.readCharacteristic(characteristic) == true
-            if (!started) failOperation("Read could not be started")
-        }
+    fun readCharacteristic(serviceUuid: UUID, charUuid: UUID) = enqueue {
+        val (g, ch) = resolve(serviceUuid, charUuid) ?: return@enqueue
+        if (!g.readCharacteristic(ch)) failOperation("Read could not be started")
     }
 
     fun writeCharacteristic(serviceUuid: UUID, charUuid: UUID, value: ByteArray, withResponse: Boolean) {
-        val characteristic = characteristicOrError(serviceUuid, charUuid) ?: return
+        val maxPayload = _mtu.value - ATT_HEADER_BYTES
+        if (!withResponse && value.size > maxPayload) {
+            // A Write Command must fit one packet; the stack would truncate or drop
+            // it. Writes *with* response are split for us via Prepare/Execute Write.
+            _events.tryEmit(
+                GattEvent.Error(
+                    "${value.size} B exceeds the $maxPayload B no-response limit at MTU ${_mtu.value}",
+                ),
+            )
+            return
+        }
         val writeType = if (withResponse) {
             BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
         } else {
             BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
         }
         enqueue {
-            val g = gatt ?: run { failOperation("Not connected"); return@enqueue }
+            val (g, ch) = resolve(serviceUuid, charUuid) ?: return@enqueue
             val started = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                g.writeCharacteristic(characteristic, value, writeType) ==
-                    android.bluetooth.BluetoothStatusCodes.SUCCESS
+                g.writeCharacteristic(ch, value, writeType) == BluetoothStatusCodes.SUCCESS
             } else {
                 @Suppress("DEPRECATION")
                 run {
-                    characteristic.writeType = writeType
-                    characteristic.value = value
-                    g.writeCharacteristic(characteristic)
+                    ch.writeType = writeType
+                    ch.value = value
+                    g.writeCharacteristic(ch)
                 }
             }
             if (!started) failOperation("Write could not be started")
@@ -129,32 +188,143 @@ class BleConnection(private val context: Context) {
     }
 
     fun setNotifications(serviceUuid: UUID, charUuid: UUID, enable: Boolean) {
-        val characteristic = characteristicOrError(serviceUuid, charUuid) ?: return
-        enqueue {
-            val g = gatt ?: return@enqueue
-            g.setCharacteristicNotification(characteristic, enable)
-            val cccd = characteristic.getDescriptor(CCCD_UUID)
-            if (cccd == null) {
-                _events.tryEmit(GattEvent.Error("Characteristic has no CCCD descriptor"))
-                operationComplete()
-                return@enqueue
+        val key = serviceUuid to charUuid
+        if (enable) activeNotifications += key else activeNotifications -= key
+        enqueueNotify(serviceUuid, charUuid, enable)
+    }
+
+    private fun enqueueNotify(serviceUuid: UUID, charUuid: UUID, enable: Boolean) = enqueue {
+        val (g, ch) = resolve(serviceUuid, charUuid) ?: return@enqueue
+        val cccd = ch.getDescriptor(CCCD_UUID)
+        if (cccd == null) {
+            failOperation("Characteristic has no CCCD descriptor")
+            return@enqueue
+        }
+        g.setCharacteristicNotification(ch, enable)
+        val payload = when {
+            !enable -> BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
+            ch.supportsIndicate() -> BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
+            else -> BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+        }
+        val started = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            g.writeDescriptor(cccd, payload) == BluetoothStatusCodes.SUCCESS
+        } else {
+            @Suppress("DEPRECATION")
+            run {
+                cccd.value = payload
+                g.writeDescriptor(cccd)
             }
-            val payload = when {
-                !enable -> BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
-                characteristic.supportsIndicate() -> BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
-                else -> BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-            }
-            val started = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                g.writeDescriptor(cccd, payload) ==
-                    android.bluetooth.BluetoothStatusCodes.SUCCESS
-            } else {
-                @Suppress("DEPRECATION")
-                run {
-                    cccd.value = payload
-                    g.writeDescriptor(cccd)
-                }
-            }
-            if (!started) failOperation("Enabling notifications could not be started")
+        }
+        if (!started) failOperation("Updating notifications could not be started")
+    }
+
+    // --- Connection lifecycle (main thread) ---------------------------------
+
+    private fun openGatt(address: String) {
+        _state.value =
+            if (_reconnectAttempt.value > 0) ConnectionState.Reconnecting else ConnectionState.Connecting
+        val g = remoteDevice(address)?.connectGatt(context, false, callback, BluetoothDevice.TRANSPORT_LE)
+        if (g == null) {
+            onLinkLost(BluetoothGatt.GATT_FAILURE)
+            return
+        }
+        gatt = g
+    }
+
+    private fun onConnected(g: BluetoothGatt) {
+        _state.value = ConnectionState.Discovering
+        discoveryStarted = false
+        // Ask for the largest MTU before anything else: fewer packets per
+        // read/write/notify. Newer Android releases may negotiate 517 whatever we
+        // ask for, so only the value reported to onMtuChanged is trusted.
+        if (g.requestMtu(desiredMtu)) {
+            mainHandler.postDelayed(mtuFallback, MTU_TIMEOUT_MS)
+        } else {
+            startDiscovery(g)
+        }
+    }
+
+    private fun startDiscovery(g: BluetoothGatt) {
+        mainHandler.removeCallbacks(mtuFallback)
+        if (discoveryStarted) return // a late or peer-initiated MTU change
+        discoveryStarted = true
+        if (!g.discoverServices()) g.disconnect() // surfaces as a link loss -> retry
+    }
+
+    private fun onReady(g: BluetoothGatt) {
+        _services.value = g.services.map { service ->
+            GattServiceInfo(
+                uuid = service.uuid,
+                characteristics = service.characteristics.map { it.toInfo() },
+            )
+        }
+        val reconnected = _reconnectAttempt.value > 0
+        _reconnectAttempt.value = 0
+        _state.value = ConnectionState.Ready
+        if (reconnected) _events.tryEmit(GattEvent.Info("Reconnected"))
+
+        if (activeNotifications.isNotEmpty()) {
+            _events.tryEmit(
+                GattEvent.Info("Re-arming ${activeNotifications.size} notification subscription(s)"),
+            )
+            activeNotifications.toList().forEach { (svc, ch) -> enqueueNotify(svc, ch, true) }
+        }
+    }
+
+    /** Handles both failed connection attempts and dropped links. */
+    private fun onLinkLost(status: Int) {
+        mainHandler.removeCallbacks(mtuFallback)
+        clearQueue()
+        // A dead client must be closed, or Android leaks it and later connects fail (status 133).
+        gatt?.let { runCatching { it.close() } }
+        gatt = null
+        resetLinkState()
+
+        if (targetAddress == null || !autoReconnect) {
+            _state.value =
+                if (status == BluetoothGatt.GATT_SUCCESS) ConnectionState.Disconnected else ConnectionState.Failed
+            return
+        }
+
+        val attempt = _reconnectAttempt.value + 1
+        if (attempt > maxReconnectAttempts) {
+            _events.tryEmit(
+                GattEvent.Error("Gave up after $maxReconnectAttempts reconnect attempts (last status $status)"),
+            )
+            targetAddress = null
+            _reconnectAttempt.value = 0
+            _state.value = ConnectionState.Failed
+            return
+        }
+
+        val delayMs = min(BASE_BACKOFF_MS shl (attempt - 1), MAX_BACKOFF_MS)
+        _reconnectAttempt.value = attempt
+        _state.value = ConnectionState.Reconnecting
+        _events.tryEmit(
+            GattEvent.Info("Disconnected (status $status) — retry $attempt/$maxReconnectAttempts in ${delayMs} ms"),
+        )
+        mainHandler.postDelayed(reconnectRunnable, delayMs)
+    }
+
+    private fun resetLinkState() {
+        _services.value = emptyList()
+        _mtu.value = DEFAULT_ATT_MTU
+        discoveryStarted = false
+    }
+
+    private fun remoteDevice(address: String): BluetoothDevice? {
+        val adapter = (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
+        if (adapter == null || !adapter.isEnabled) return null
+        return runCatching { adapter.getRemoteDevice(address) }.getOrNull()
+    }
+
+    /**
+     * Re-posts a callback to the main thread, dropping it if it came from a GATT
+     * client that has since been closed or replaced.
+     */
+    private fun onMain(source: BluetoothGatt, block: () -> Unit) {
+        mainHandler.post {
+            if (source === gatt) block() else runCatching { source.close() }
         }
     }
 
@@ -162,33 +332,41 @@ class BleConnection(private val context: Context) {
 
     private val callback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
-            when (newState) {
-                BluetoothProfile.STATE_CONNECTED -> {
-                    _state.value = ConnectionState.Discovering
-                    mainHandler.post { gatt.discoverServices() }
-                }
-                BluetoothProfile.STATE_DISCONNECTED -> {
-                    clearQueue()
-                    _services.value = emptyList()
-                    _state.value =
-                        if (status == BluetoothGatt.GATT_SUCCESS) ConnectionState.Disconnected
-                        else ConnectionState.Failed
+            onMain(gatt) {
+                when {
+                    newState == BluetoothProfile.STATE_CONNECTED &&
+                        status == BluetoothGatt.GATT_SUCCESS -> onConnected(gatt)
+                    newState == BluetoothProfile.STATE_DISCONNECTED ||
+                        status != BluetoothGatt.GATT_SUCCESS -> onLinkLost(status)
                 }
             }
         }
 
+        override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
+            onMain(gatt) {
+                if (status == BluetoothGatt.GATT_SUCCESS) {
+                    _mtu.value = mtu
+                    _events.tryEmit(
+                        GattEvent.Info("MTU $mtu — up to ${mtu - ATT_HEADER_BYTES} B per write/notify"),
+                    )
+                } else {
+                    _events.tryEmit(
+                        GattEvent.Info("MTU request rejected (status $status); staying at ${_mtu.value}"),
+                    )
+                }
+                startDiscovery(gatt)
+            }
+        }
+
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
-            if (status != BluetoothGatt.GATT_SUCCESS) {
-                _state.value = ConnectionState.Failed
-                return
+            onMain(gatt) {
+                if (status == BluetoothGatt.GATT_SUCCESS) {
+                    onReady(gatt)
+                } else {
+                    _events.tryEmit(GattEvent.Error("Service discovery failed (status $status)"))
+                    gatt.disconnect() // surfaces as a link loss -> retry
+                }
             }
-            _services.value = gatt.services.map { service ->
-                GattServiceInfo(
-                    uuid = service.uuid,
-                    characteristics = service.characteristics.map { it.toInfo() },
-                )
-            }
-            _state.value = ConnectionState.Ready
         }
 
         // API 33+ read callback (carries the value).
@@ -256,7 +434,7 @@ class BleConnection(private val context: Context) {
             status: Int,
         ) {
             if (status != BluetoothGatt.GATT_SUCCESS) {
-                _events.tryEmit(GattEvent.Error("Enabling notifications failed ($status)"))
+                _events.tryEmit(GattEvent.Error("Updating notifications failed ($status)"))
             }
             operationComplete()
         }
@@ -273,10 +451,8 @@ class BleConnection(private val context: Context) {
     // --- Serial operation queue ---------------------------------------------
 
     private fun enqueue(op: () -> Unit) {
-        synchronized(opQueue) {
-            opQueue.addLast(op)
-            maybeRunNext()
-        }
+        synchronized(opQueue) { opQueue.addLast(op) }
+        maybeRunNext()
     }
 
     private fun maybeRunNext() {
@@ -284,7 +460,9 @@ class BleConnection(private val context: Context) {
             if (opInFlight) return
             val op = opQueue.removeFirstOrNull() ?: return
             opInFlight = true
-            mainHandler.post(op)
+            val generation = queueGeneration
+            // Skip ops that were already posted when their connection was torn down.
+            mainHandler.post { if (generation == queueGeneration) op() }
         }
     }
 
@@ -297,6 +475,7 @@ class BleConnection(private val context: Context) {
         synchronized(opQueue) {
             opQueue.clear()
             opInFlight = false
+            queueGeneration++
         }
     }
 
@@ -306,12 +485,17 @@ class BleConnection(private val context: Context) {
         operationComplete()
     }
 
-    private fun characteristicOrError(serviceUuid: UUID, charUuid: UUID): BluetoothGattCharacteristic? {
-        val characteristic = gatt?.getService(serviceUuid)?.getCharacteristic(charUuid)
-        if (characteristic == null) {
-            _events.tryEmit(GattEvent.Error("Characteristic $charUuid not found"))
+    /** Looks a characteristic up on the *current* link; fails the op if it's gone. */
+    private fun resolve(serviceUuid: UUID, charUuid: UUID): Pair<BluetoothGatt, BluetoothGattCharacteristic>? {
+        val g = gatt ?: run {
+            failOperation("Not connected")
+            return null
         }
-        return characteristic
+        val ch = g.getService(serviceUuid)?.getCharacteristic(charUuid) ?: run {
+            failOperation("Characteristic $charUuid not found")
+            return null
+        }
+        return g to ch
     }
 
     private fun BluetoothGattCharacteristic.toInfo() = GattCharacteristicInfo(
@@ -334,7 +518,17 @@ class BleConnection(private val context: Context) {
         /** Client Characteristic Configuration Descriptor. */
         private val CCCD_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
-        /** BluetoothDevice.TRANSPORT_LE — inlined to avoid an extra import. */
-        private const val BluetoothDevice_TRANSPORT_LE = 2
+        /** ATT MTU before any negotiation (Bluetooth Core spec). */
+        const val DEFAULT_ATT_MTU = 23
+
+        /** Largest ATT MTU Android will negotiate. */
+        const val MAX_ATT_MTU = 517
+
+        /** ATT opcode + handle overhead per packet: payload = MTU - 3. */
+        const val ATT_HEADER_BYTES = 3
+
+        private const val MTU_TIMEOUT_MS = 3_000L
+        private const val BASE_BACKOFF_MS = 1_000L
+        private const val MAX_BACKOFF_MS = 30_000L
     }
 }

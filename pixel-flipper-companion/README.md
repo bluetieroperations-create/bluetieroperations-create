@@ -17,6 +17,7 @@ starter scaffold — buildable in Android Studio — not a finished product.
 | NFC host-card emulation | ✅ `CardEmulationService` (HCE) | ❌ | emulate to readers you control |
 | BLE scan | ✅ `BleScanner` | ✅ `WearBleScanner` | both platforms expose BLE to apps |
 | BLE connect + GATT read/write/notify | ✅ `BleConnection` + GATT browser UI | ❌ (scaffold: phone only) | serial op queue; API 33 dual-path |
+| Auto-reconnect + MTU negotiation | ✅ backoff retries, re-armed notifications, MTU up to 517 | ❌ | see `BleConnection` |
 | Trigger phone from wrist | — | ✅ `PhoneConnector` | Wearable Data Layer messaging |
 | Sub-GHz / 125 kHz / IR | ⚠️ USB-C OTG dongle only | ❌ no USB port | out of scope for this scaffold |
 
@@ -41,6 +42,14 @@ pixel-flipper-companion/
 - `mobile/.../ble/BleConnection.kt` — GATT client: connect, discover, read, write,
   notifications. One serial operation queue (GATT allows a single in-flight op),
   with dual-path handling for the API 33 callback/method changes.
+  - **MTU:** requests 517 right after connecting (falls back to discovery after
+    3 s if the peer never answers); no-response writes are capped at `MTU - 3`,
+    longer with-response writes go out as long (prepared) writes.
+  - **Auto-reconnect:** any drop while you still want the link — including a
+    failed first attempt (the classic status 133) — closes the dead client and
+    retries with exponential backoff (1 s → 16 s, 5 attempts by default), then
+    re-arms the notification subscriptions that were active. Tunable via the
+    `autoReconnect` / `maxReconnectAttempts` / `desiredMtu` constructor params.
 - `mobile/.../ui/GattScreen.kt` — GATT browser: services/characteristics with
   Read / Write / Notify controls and a live event log.
 - `mobile/.../wear/PhoneMessageListenerService.kt` — receives watch triggers.

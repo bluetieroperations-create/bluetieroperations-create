@@ -54,6 +54,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val connectionState: StateFlow<ConnectionState> = connection.state
     val gattServices: StateFlow<List<GattServiceInfo>> = connection.services
 
+    /** Negotiated ATT MTU (23 until negotiation completes). */
+    val mtu: StateFlow<Int> = connection.mtu
+
+    /** 0 unless an automatic reconnect is in progress. */
+    val reconnectAttempt: StateFlow<Int> = connection.reconnectAttempt
+    val maxReconnectAttempts: Int get() = connection.maxReconnectAttempts
+
     private val _selected = MutableStateFlow<SelectedCharacteristic?>(null)
     val selected: StateFlow<SelectedCharacteristic?> = _selected.asStateFlow()
 
@@ -90,7 +97,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _selected.value = null
         _connectedAddress.value = address
         if (!connection.connect(address)) {
-            log("Connect failed: adapter off or bad address")
+            log("Connect failed: Bluetooth is off or the address is invalid")
             _connectedAddress.value = null
         }
     }
@@ -133,6 +140,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         is GattEvent.Read -> "READ ${uuid.short()} = ${Hex.encode(value)}  \"${Hex.asText(value)}\""
         is GattEvent.Written -> "WRITE ${uuid.short()} ${if (success) "ok" else "failed"}"
         is GattEvent.Notification -> "NOTIFY ${uuid.short()} = ${Hex.encode(value)}"
+        is GattEvent.Info -> "INFO $message"
         is GattEvent.Error -> "ERROR $message"
     }
 

@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.bluetier.flippercompanion.mobile.ble.BleConnection
 import com.bluetier.flippercompanion.mobile.ble.ConnectionState
 import com.bluetier.flippercompanion.mobile.ble.GattCharacteristicInfo
 import java.util.UUID
@@ -45,6 +46,8 @@ fun GattScreen(viewModel: MainViewModel, address: String, onBack: () -> Unit) {
     val services by viewModel.gattServices.collectAsStateWithLifecycle()
     val selected by viewModel.selected.collectAsStateWithLifecycle()
     val log by viewModel.gattLog.collectAsStateWithLifecycle()
+    val mtu by viewModel.mtu.collectAsStateWithLifecycle()
+    val reconnectAttempt by viewModel.reconnectAttempt.collectAsStateWithLifecycle()
 
     val notifying = remember { mutableStateMapOf<UUID, Boolean>() }
     var writeHex by remember { mutableStateOf("") }
@@ -60,7 +63,10 @@ fun GattScreen(viewModel: MainViewModel, address: String, onBack: () -> Unit) {
             OutlinedButton(onClick = onBack) { Text("Disconnect") }
             Column(Modifier.padding(start = 12.dp)) {
                 Text(address, fontFamily = FontFamily.Monospace)
-                Text(state.label(), style = MaterialTheme.typography.bodySmall)
+                Text(
+                    statusLine(state, mtu, reconnectAttempt, viewModel.maxReconnectAttempts),
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         }
 
@@ -100,6 +106,7 @@ fun GattScreen(viewModel: MainViewModel, address: String, onBack: () -> Unit) {
                         .firstOrNull { it.uuid == sel.charUuid }
                         ?.let { it.canWrite || it.canWriteNoResponse } == true
                 } ?: false,
+                maxNoResponseBytes = mtu - BleConnection.ATT_HEADER_BYTES,
                 hex = writeHex,
                 onHexChange = { writeHex = it },
                 withResponse = withResponse,
@@ -113,7 +120,9 @@ fun GattScreen(viewModel: MainViewModel, address: String, onBack: () -> Unit) {
                 when (state) {
                     ConnectionState.Failed -> "Connection failed. Tap Disconnect and retry."
                     ConnectionState.Disconnected -> "Disconnected."
-                    else -> "Connecting / discovering services…"
+                    ConnectionState.Reconnecting ->
+                        "Link lost — reconnecting automatically. Active notifications are re-armed once it's back."
+                    else -> "Connecting / negotiating MTU / discovering services…"
                 },
                 modifier = Modifier.padding(vertical = 24.dp),
             )
@@ -161,6 +170,7 @@ private fun CharacteristicCard(
 @Composable
 private fun WritePanel(
     enabled: Boolean,
+    maxNoResponseBytes: Int,
     hex: String,
     onHexChange: (String) -> Unit,
     withResponse: Boolean,
@@ -174,6 +184,15 @@ private fun WritePanel(
                 value = hex,
                 onValueChange = onHexChange,
                 label = { Text("Payload (hex, e.g. 01 A0 FF)") },
+                supportingText = {
+                    Text(
+                        if (withResponse) {
+                            "Over $maxNoResponseBytes B is sent as a long (prepared) write"
+                        } else {
+                            "Max $maxNoResponseBytes B without response at this MTU"
+                        },
+                    )
+                },
                 singleLine = true,
                 enabled = enabled,
                 modifier = Modifier.fillMaxWidth(),
@@ -213,13 +232,16 @@ private fun EventLog(log: List<String>) {
     }
 }
 
-private fun ConnectionState.label(): String = when (this) {
-    ConnectionState.Disconnected -> "Disconnected"
-    ConnectionState.Connecting -> "Connecting…"
-    ConnectionState.Discovering -> "Discovering services…"
-    ConnectionState.Ready -> "Connected"
-    ConnectionState.Failed -> "Failed"
-}
+private fun statusLine(state: ConnectionState, mtu: Int, attempt: Int, maxAttempts: Int): String =
+    when (state) {
+        ConnectionState.Disconnected -> "Disconnected"
+        ConnectionState.Connecting -> "Connecting…"
+        ConnectionState.Discovering -> "Negotiating MTU, discovering services…"
+        ConnectionState.Ready ->
+            "Connected · MTU $mtu (${mtu - BleConnection.ATT_HEADER_BYTES} B/packet)"
+        ConnectionState.Reconnecting -> "Reconnecting… attempt $attempt of $maxAttempts"
+        ConnectionState.Failed -> "Failed"
+    }
 
 private fun GattCharacteristicInfo.propertyBadges(): String = buildList {
     if (canRead) add("READ")
