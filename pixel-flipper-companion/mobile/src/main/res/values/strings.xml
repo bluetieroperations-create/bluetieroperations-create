@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Flipper Companion</string>
+    <string name="hce_service_description">Flipper Companion emulated card</string>
+    <string name="aid_group_description">Flipper Companion AIDs</string>
+</resources>

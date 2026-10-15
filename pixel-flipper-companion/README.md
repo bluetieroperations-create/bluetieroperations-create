@@ -1,0 +1,69 @@
+# Pixel Flipper Companion
+
+A Flipper-Zero-*inspired* toolkit for **Pixel 11** (phone) and **Pixel Watch 3**
+(Wear OS) that uses **only the hardware those devices actually have**. It is a
+starter scaffold — buildable in Android Studio — not a finished product.
+
+> **What this is not:** you cannot turn a phone or watch into a Flipper Zero.
+> The Flipper is mostly *radios* (sub-GHz CC1101, 125 kHz LF RFID coil, IR
+> transceiver) that neither device contains. This project implements the subset
+> a Pixel can do natively, and leaves hooks for external USB-C hardware.
+
+## What each device can do
+
+| Capability | Pixel 11 | Pixel Watch 3 | Notes |
+|---|---|---|---|
+| NFC read (13.56 MHz) | ✅ `NfcReader` (reader mode) | ❌ | Wear OS reserves NFC for Google Wallet |
+| NFC host-card emulation | ✅ `CardEmulationService` (HCE) | ❌ | emulate to readers you control |
+| BLE scan | ✅ `BleScanner` | ✅ `WearBleScanner` | both platforms expose BLE to apps |
+| Trigger phone from wrist | — | ✅ `PhoneConnector` | Wearable Data Layer messaging |
+| Sub-GHz / 125 kHz / IR | ⚠️ USB-C OTG dongle only | ❌ no USB port | out of scope for this scaffold |
+
+The watch's real role here is a **remote**: its chips send actions
+(`BLE_SCAN`, `NFC_READ`, `NFC_EMULATE`) to the phone, which has the hardware to
+carry them out.
+
+## Modules
+
+```
+pixel-flipper-companion/
+├── shared/   # WearContract: message paths, capability name, action enum
+├── mobile/   # Pixel 11 app  (NFC + BLE + receives watch triggers)
+└── wear/     # Pixel Watch 3 app (BLE + sends triggers to the phone)
+```
+
+### Key files
+- `shared/.../WearContract.kt` — single source of truth for the phone⇄watch protocol.
+- `mobile/.../nfc/NfcReader.kt` — NFC reader-mode tag reads (UID, tech, NDEF).
+- `mobile/.../hce/CardEmulationService.kt` — HCE applet (replace the sample AID/logic).
+- `mobile/.../ble/BleScanner.kt` — BLE scan as a `StateFlow`.
+- `mobile/.../wear/PhoneMessageListenerService.kt` — receives watch triggers.
+- `wear/.../phone/PhoneConnector.kt` — discovers the phone by capability and sends triggers.
+
+## Build
+
+Requires Android Studio (Ladybug or newer) with the Android SDK; internet access
+to resolve the Android Gradle Plugin.
+
+```bash
+# from this directory, after `sdkmanager` / Android Studio has installed the SDK:
+./gradlew :mobile:assembleDebug   # phone APK
+./gradlew :wear:assembleDebug     # watch APK
+```
+
+Create a `local.properties` with `sdk.dir=/path/to/Android/sdk` (Android Studio
+writes this automatically on first open). Both modules share the
+`com.bluetier.flippercompanion` application id so the watch app installs as the
+phone app's companion.
+
+> This scaffold was generated without a full Gradle sync (the build container
+> blocks the Google Maven repo). The first `File ▸ Sync` in Android Studio will
+> download dependencies and may nudge plugin/library versions in
+> `gradle/libs.versions.toml` — accept the IDE's suggested updates if prompted.
+
+## Scope & legitimate use
+
+Build and test against **tags, cards, and devices you own or are authorized to
+test**. HCE here emulates a card to *your* reader; it does not and cannot clone
+the secure credential on someone else's access badge, transit card, or car key —
+that crypto is not exposed to the host OS. Keep it that way.
