@@ -13,6 +13,9 @@ import com.bluetier.flippercompanion.mobile.ble.GattEvent
 import com.bluetier.flippercompanion.mobile.ble.GattServiceInfo
 import com.bluetier.flippercompanion.mobile.ble.Hex
 import com.bluetier.flippercompanion.mobile.nfc.NfcTagInfo
+import com.bluetier.flippercompanion.mobile.obd.ObdController
+import com.bluetier.flippercompanion.mobile.obd.ObdLine
+import com.bluetier.flippercompanion.mobile.obd.UartChannel
 import com.bluetier.flippercompanion.mobile.wear.WearBridge
 import com.bluetier.flippercompanion.shared.WearContract
 import java.util.UUID
@@ -30,6 +33,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val bleScanner = BleScanner(app)
     private val connection = BleConnection(app)
+    private val obd = ObdController(connection, viewModelScope)
 
     val scanning: StateFlow<Boolean> = bleScanner.scanning
 
@@ -72,6 +76,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _gattLog = MutableStateFlow<List<String>>(emptyList())
     val gattLog: StateFlow<List<String>> = _gattLog.asStateFlow()
 
+    // --- OBD terminal --------------------------------------------------------
+
+    /** True while the OBD terminal is shown (connection stays live underneath). */
+    private val _obdActive = MutableStateFlow(false)
+    val obdActive: StateFlow<Boolean> = _obdActive.asStateFlow()
+
+    val obdLines: StateFlow<List<ObdLine>> = obd.lines
+    val obdChannel: StateFlow<UartChannel?> = obd.channel
+
     init {
         // React to triggers pushed from the watch.
         viewModelScope.launch {
@@ -107,10 +120,31 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun disconnect() {
+        obd.stop()
+        _obdActive.value = false
         connection.disconnect()
         _connectedAddress.value = null
         _selected.value = null
     }
+
+    // OBD terminal
+    /** Switch the connected device into OBD-terminal mode. @return false if no UART found. */
+    fun enterObd(): Boolean {
+        if (!obd.configure(gattServices.value)) return false
+        obd.start()
+        _obdActive.value = true
+        return true
+    }
+
+    /** Leave OBD mode back to the GATT browser; the connection stays open. */
+    fun exitObd() {
+        obd.stop()
+        _obdActive.value = false
+    }
+
+    fun obdSend(command: String) = obd.send(command)
+    fun obdInit() = obd.sendInit()
+    fun obdClear() = obd.clear()
 
     /** Begin pairing with the connected device (Android shows the system dialog). */
     fun pair() {
@@ -155,6 +189,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     override fun onCleared() {
         bleScanner.stop()
+        obd.stop()
         connection.disconnect()
         super.onCleared()
     }

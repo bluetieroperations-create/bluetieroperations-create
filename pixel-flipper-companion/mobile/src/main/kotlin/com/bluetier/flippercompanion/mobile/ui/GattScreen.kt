@@ -55,6 +55,7 @@ fun GattScreen(viewModel: MainViewModel, address: String, onBack: () -> Unit) {
     val notifying = remember { mutableStateMapOf<CharRef, Boolean>() }
     var writeHex by remember { mutableStateOf("") }
     var withResponse by remember { mutableStateOf(true) }
+    var obdError by remember { mutableStateOf<String?>(null) }
 
     Column(
         modifier = Modifier
@@ -77,6 +78,16 @@ fun GattScreen(viewModel: MainViewModel, address: String, onBack: () -> Unit) {
         BondRow(bondState = bondState, onPair = viewModel::pair)
 
         if (state == ConnectionState.Ready) {
+            OutlinedButton(
+                onClick = {
+                    if (!viewModel.enterObd()) {
+                        obdError = "No UART service found — this doesn't look like a serial/OBD adapter."
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Open as OBD terminal") }
+            obdError?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+
             LazyColumn(
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 verticalArrangement = Arrangement.spacedBy(8.dp),

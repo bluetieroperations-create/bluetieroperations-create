@@ -34,9 +34,14 @@ fun CompanionScreen(
     onToggleScan: () -> Unit,
 ) {
     val connectedAddress by viewModel.connectedAddress.collectAsStateWithLifecycle()
+    val obdActive by viewModel.obdActive.collectAsStateWithLifecycle()
 
     if (connectedAddress != null) {
-        GattScreen(viewModel = viewModel, address = connectedAddress!!, onBack = viewModel::disconnect)
+        if (obdActive) {
+            ObdScreen(viewModel = viewModel, address = connectedAddress!!, onBack = viewModel::exitObd)
+        } else {
+            GattScreen(viewModel = viewModel, address = connectedAddress!!, onBack = viewModel::disconnect)
+        }
         return
     }
 

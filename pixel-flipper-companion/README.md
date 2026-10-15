@@ -19,6 +19,7 @@ starter scaffold — buildable in Android Studio — not a finished product.
 | BLE connect + GATT read/write/notify | ✅ `BleConnection` + GATT browser UI | ❌ (scaffold: phone only) | serial op queue; API 33 dual-path |
 | Auto-reconnect + MTU negotiation | ✅ backoff retries, re-armed notifications, MTU up to 517 | ❌ | see `BleConnection` |
 | Bonding / pairing | ✅ `createBond()` + bond-state tracking, system pairing dialog | ❌ | needed for encrypted characteristics |
+| OBD-II terminal | ✅ ELM327 terminal over BLE UART (`obd/`) | ❌ | your own adapter, your own car |
 | Trigger phone from wrist | — | ✅ `PhoneConnector` | Wearable Data Layer messaging |
 | Sub-GHz / 125 kHz / IR | ⚠️ USB-C OTG dongle only | ❌ no USB port | out of scope for this scaffold |
 
@@ -62,6 +63,12 @@ pixel-flipper-companion/
     encrypted characteristic.
 - `mobile/.../ui/GattScreen.kt` — GATT browser: services/characteristics with
   Read / Write / Notify controls and a live event log.
+- `mobile/.../obd/` — ELM327 OBD-II terminal over the BLE UART. `UartDetect`
+  finds the write/notify characteristics (HM-10 `0xFFE1`, Nordic UART, Vgate
+  `0xFFF0`, or a generic fallback); `ObdFraming` reassembles replies on the `>`
+  prompt; `ObdPids` decodes common Mode 01 PIDs; `ObdController` serializes
+  commands (one request/response at a time, with a timeout). UI in
+  `ui/ObdScreen.kt`, reached from the GATT browser's "Open as OBD terminal".
 - `mobile/.../wear/PhoneMessageListenerService.kt` — receives watch triggers.
 - `wear/.../phone/PhoneConnector.kt` — discovers the phone by capability and sends triggers.
 
@@ -121,3 +128,19 @@ Build and test against **tags, cards, and devices you own or are authorized to
 test**. HCE here emulates a card to *your* reader; it does not and cannot clone
 the secure credential on someone else's access badge, transit card, or car key —
 that crypto is not exposed to the host OS. Keep it that way.
+
+The OBD terminal talks to a diagnostic adapter **you** plug into **your own**
+vehicle. It sends standard ELM327/OBD-II commands and displays the replies; it
+does not unlock, bypass, or modify any vehicle security function.
+
+### Not in scope: cloning the manufacturer app for remote start
+
+Remote engine start in VW's app is **not** a Bluetooth feature and is out of
+this project's scope. It runs over the manufacturer's cloud (phone → VW servers
+→ the car's built-in cellular modem), gated by your account login and an active
+remote-access subscription. Decompiling/repackaging the proprietary app would
+infringe copyright and still wouldn't work — the server authorizes the command,
+not the app. The legitimate route is a thin client that signs in with **your own
+credentials** and calls the documented remote-start endpoint (what community
+Home-Assistant integrations do), which only works if your plan includes it.
+That's a separate cloud project, not part of this BLE app.
