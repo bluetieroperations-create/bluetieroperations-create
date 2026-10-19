@@ -24,10 +24,15 @@ class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
     private lateinit var nfcReader: NfcReader
 
+    /** Action to run once the BLE permissions requested below are granted. */
+    private var pendingScanAction: (() -> Unit)? = null
+
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { grants ->
-        if (grants.values.all { it }) viewModel.startBleScan()
+        val action = pendingScanAction
+        pendingScanAction = null
+        if (grants.values.all { it }) action?.invoke()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,6 +53,8 @@ class MainActivity : ComponentActivity() {
                 nfcSupported = nfcReader.isSupported,
                 nfcEnabled = nfcEnabled,
                 onToggleScan = ::onToggleScan,
+                onFind = { withScanPermission(viewModel::enterFinder) },
+                onSweep = { withScanPermission(viewModel::enterSweep) },
             )
         }
     }
@@ -56,16 +63,18 @@ class MainActivity : ComponentActivity() {
     private var nfcEnabled by mutableStateOf(false)
 
     private fun onToggleScan() {
-        if (viewModel.scanning.value) {
-            viewModel.stopBleScan()
-            return
-        }
+        if (viewModel.scanning.value) viewModel.stopBleScan() else withScanPermission(viewModel::startBleScan)
+    }
+
+    /** Run [action] if the BLE permissions are held, otherwise request them first. */
+    private fun withScanPermission(action: () -> Unit) {
         val needed = requiredBlePermissions().filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
         if (needed.isEmpty()) {
-            viewModel.startBleScan()
+            action()
         } else {
+            pendingScanAction = action
             permissionLauncher.launch(needed.toTypedArray())
         }
     }

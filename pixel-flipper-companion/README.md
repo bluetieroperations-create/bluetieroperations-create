@@ -16,6 +16,8 @@ starter scaffold — buildable in Android Studio — not a finished product.
 | NFC read (13.56 MHz) | ✅ `NfcReader` (reader mode) | ❌ | Wear OS reserves NFC for Google Wallet |
 | NFC host-card emulation | ✅ `CardEmulationService` (HCE) | ❌ | emulate to readers you control |
 | BLE scan | ✅ `BleScanner` | ✅ `WearBleScanner` | both platforms expose BLE to apps |
+| Hot/cold device finder | ✅ smoothed-RSSI proximity + warmer/colder | ❌ | `Proximity`, `FinderScreen` |
+| Unwanted-tracker sweep | ✅ flags AirTag/SmartTag/Tile + persistent beacons | ❌ | `TrackerClassifier`, `SweepAnalysis` |
 | BLE connect + GATT read/write/notify | ✅ `BleConnection` + GATT browser UI | ❌ (scaffold: phone only) | serial op queue; API 33 dual-path |
 | Auto-reconnect + MTU negotiation | ✅ backoff retries, re-armed notifications, MTU up to 517 | ❌ | see `BleConnection` |
 | Bonding / pairing | ✅ `createBond()` + bond-state tracking, system pairing dialog | ❌ | needed for encrypted characteristics |
@@ -63,6 +65,16 @@ pixel-flipper-companion/
     encrypted characteristic.
 - `mobile/.../ui/GattScreen.kt` — GATT browser: services/characteristics with
   Read / Write / Notify controls and a live event log.
+- `mobile/.../ble/BleScanner.kt` — aggregates each advertiser across the scan
+  (smoothed RSSI, sighting count, first/last-seen, manufacturer/service data).
+- `mobile/.../ble/Proximity.kt` + `ui/FinderScreen.kt` — the hot/cold finder:
+  lock onto a device, then follow a smoothed signal and a warmer/colder trend as
+  you move. Distance is a rough RSSI estimate, used only relatively.
+- `mobile/.../ble/TrackerClassifier.kt` + `SweepAnalysis.kt` + `ui/SweepScreen.kt`
+  — the unwanted-tracker sweep: classifies advertisers against known item-tracker
+  signatures (Apple Find My type `0x12`, Samsung SmartTag `FD5A`/`FD59`, Tile
+  `FEED`) and ranks by signature + persistence + proximity. Heuristic, and a
+  supplement to the OS's own unknown-tracker alerts — not a replacement.
 - `mobile/.../obd/` — ELM327 OBD-II terminal over the BLE UART. `UartDetect`
   finds the write/notify characteristics (HM-10 `0xFFE1`, Nordic UART, Vgate
   `0xFFF0`, or a generic fallback); `ObdFraming` reassembles replies on the `>`

@@ -3,6 +3,7 @@ package com.bluetier.flippercompanion.mobile.ui
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -11,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,9 +34,12 @@ fun CompanionScreen(
     nfcSupported: Boolean,
     nfcEnabled: Boolean,
     onToggleScan: () -> Unit,
+    onFind: () -> Unit,
+    onSweep: () -> Unit,
 ) {
     val connectedAddress by viewModel.connectedAddress.collectAsStateWithLifecycle()
     val obdActive by viewModel.obdActive.collectAsStateWithLifecycle()
+    val scanMode by viewModel.scanMode.collectAsStateWithLifecycle()
 
     if (connectedAddress != null) {
         if (obdActive) {
@@ -43,6 +48,12 @@ fun CompanionScreen(
             GattScreen(viewModel = viewModel, address = connectedAddress!!, onBack = viewModel::disconnect)
         }
         return
+    }
+
+    when (scanMode) {
+        ScanMode.FINDER -> { FinderScreen(viewModel, onBack = viewModel::exitScanMode); return }
+        ScanMode.SWEEP -> { SweepScreen(viewModel, onBack = viewModel::exitScanMode); return }
+        ScanMode.LIST -> Unit
     }
 
     val scanning by viewModel.scanning.collectAsStateWithLifecycle()
@@ -73,6 +84,10 @@ fun CompanionScreen(
 
         Button(onClick = onToggleScan, modifier = Modifier.fillMaxWidth()) {
             Text(if (scanning) "Stop BLE scan" else "Start BLE scan")
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = onFind, modifier = Modifier.weight(1f)) { Text("Find a device") }
+            OutlinedButton(onClick = onSweep, modifier = Modifier.weight(1f)) { Text("Tracker sweep") }
         }
 
         Text("BLE devices (${devices.size}) — tap to connect", style = MaterialTheme.typography.titleMedium)
