@@ -14,7 +14,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.bluetier.flippercompanion.mobile.nfc.NfcMessages
 import com.bluetier.flippercompanion.mobile.nfc.NfcReader
+import com.bluetier.flippercompanion.mobile.nfc.NfcWriteResult
 import com.bluetier.flippercompanion.mobile.ui.CompanionScreen
 import com.bluetier.flippercompanion.mobile.ui.MainViewModel
 import kotlinx.coroutines.launch
@@ -43,6 +45,20 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             nfcReader.lastTag.collect { tag -> tag?.let(viewModel::onNfcTag) }
         }
+        // Mirror NFC write arm-state and results into the ViewModel for the UI.
+        lifecycleScope.launch {
+            nfcReader.armed.collect(viewModel::setNfcArmed)
+        }
+        lifecycleScope.launch {
+            nfcReader.writeResult.collect { result ->
+                viewModel.onNfcWriteStatus(
+                    when (result) {
+                        is NfcWriteResult.Success -> "Wrote ${result.bytesWritten} B to the tag"
+                        is NfcWriteResult.Failure -> "Write failed: ${result.reason}"
+                    },
+                )
+            }
+        }
 
         // Opt in on every API level so the UI's safe-drawing padding behaves the
         // same on older devices as on Android 15+, where it is enforced.
@@ -55,6 +71,9 @@ class MainActivity : ComponentActivity() {
                 onToggleScan = ::onToggleScan,
                 onFind = { withScanPermission(viewModel::enterFinder) },
                 onSweep = { withScanPermission(viewModel::enterSweep) },
+                onArmTextWrite = { text -> nfcReader.armWrite(NfcMessages.text(text)) },
+                onArmUriWrite = { uri -> nfcReader.armWrite(NfcMessages.uri(uri)) },
+                onCancelNfcWrite = { nfcReader.disarmWrite() },
             )
         }
     }

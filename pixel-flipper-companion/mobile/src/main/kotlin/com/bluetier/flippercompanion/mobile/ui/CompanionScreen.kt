@@ -12,11 +12,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -36,6 +41,9 @@ fun CompanionScreen(
     onToggleScan: () -> Unit,
     onFind: () -> Unit,
     onSweep: () -> Unit,
+    onArmTextWrite: (String) -> Unit,
+    onArmUriWrite: (String) -> Unit,
+    onCancelNfcWrite: () -> Unit,
 ) {
     val connectedAddress by viewModel.connectedAddress.collectAsStateWithLifecycle()
     val obdActive by viewModel.obdActive.collectAsStateWithLifecycle()
@@ -59,6 +67,8 @@ fun CompanionScreen(
     val scanning by viewModel.scanning.collectAsStateWithLifecycle()
     val devices by viewModel.devices.collectAsStateWithLifecycle()
     val nfcTag by viewModel.nfcTag.collectAsStateWithLifecycle()
+    val nfcArmed by viewModel.nfcArmed.collectAsStateWithLifecycle()
+    val nfcWriteStatus by viewModel.nfcWriteStatus.collectAsStateWithLifecycle()
     val watchAction by viewModel.lastWatchAction.collectAsStateWithLifecycle()
 
     Column(
@@ -82,6 +92,16 @@ fun CompanionScreen(
 
         NfcCard(nfcSupported, nfcEnabled, nfcTag)
 
+        if (nfcSupported && nfcEnabled) {
+            NfcWriteCard(
+                armed = nfcArmed,
+                status = nfcWriteStatus,
+                onArmText = onArmTextWrite,
+                onArmUri = onArmUriWrite,
+                onCancel = onCancelNfcWrite,
+            )
+        }
+
         Button(onClick = onToggleScan, modifier = Modifier.fillMaxWidth()) {
             Text(if (scanning) "Stop BLE scan" else "Start BLE scan")
         }
@@ -95,6 +115,47 @@ fun CompanionScreen(
             items(devices, key = { it.address }) { device ->
                 BleRow(device, onConnect = { viewModel.connect(device.address) })
             }
+        }
+    }
+}
+
+@Composable
+private fun NfcWriteCard(
+    armed: Boolean,
+    status: String?,
+    onArmText: (String) -> Unit,
+    onArmUri: (String) -> Unit,
+    onCancel: () -> Unit,
+) {
+    var isUri by remember { mutableStateOf(false) }
+    var value by remember { mutableStateOf("") }
+
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Write a tag", style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = !isUri, onClick = { isUri = false }, label = { Text("Text") })
+                FilterChip(selected = isUri, onClick = { isUri = true }, label = { Text("URL") })
+            }
+            OutlinedTextField(
+                value = value,
+                onValueChange = { value = it },
+                label = { Text(if (isUri) "https://example.com" else "Text to write") },
+                singleLine = true,
+                enabled = !armed,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (armed) {
+                Text("Armed — hold a writable tag to the phone now.", style = MaterialTheme.typography.bodyMedium)
+                OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
+            } else {
+                Button(
+                    onClick = { if (isUri) onArmUri(value.trim()) else onArmText(value) },
+                    enabled = value.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Arm write — then tap a tag") }
+            }
+            status?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         }
     }
 }

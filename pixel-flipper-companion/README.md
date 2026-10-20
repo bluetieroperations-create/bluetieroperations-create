@@ -14,6 +14,7 @@ starter scaffold — buildable in Android Studio — not a finished product.
 | Capability | Pixel 11 | Pixel Watch 3 | Notes |
 |---|---|---|---|
 | NFC read (13.56 MHz) | ✅ `NfcReader` (reader mode) | ❌ | Wear OS reserves NFC for Google Wallet |
+| NFC write (NDEF) | ✅ `NfcReader.armWrite` + `NfcMessages` (text / URL) | ❌ | writes/formats tags you own |
 | NFC host-card emulation | ✅ `CardEmulationService` (HCE) | ❌ | emulate to readers you control |
 | BLE scan | ✅ `BleScanner` | ✅ `WearBleScanner` | both platforms expose BLE to apps |
 | Hot/cold device finder | ✅ smoothed-RSSI proximity + warmer/colder | ❌ | `Proximity`, `FinderScreen` |
@@ -40,7 +41,9 @@ pixel-flipper-companion/
 
 ### Key files
 - `shared/.../WearContract.kt` — single source of truth for the phone⇄watch protocol.
-- `mobile/.../nfc/NfcReader.kt` — NFC reader-mode tag reads (UID, tech, NDEF).
+- `mobile/.../nfc/NfcReader.kt` — NFC reader-mode tag reads (UID, tech, NDEF) and
+  armed NDEF writes (writes a writable tag, or formats a blank one, on the next tap).
+- `mobile/.../nfc/NfcMessages.kt` — builds text / URL NDEF messages for writing.
 - `mobile/.../hce/CardEmulationService.kt` — HCE applet (replace the sample AID/logic).
 - `mobile/.../ble/BleScanner.kt` — BLE scan as a `StateFlow`.
 - `mobile/.../ble/BleConnection.kt` — GATT client: connect, discover, read, write,

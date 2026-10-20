@@ -70,6 +70,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _nfcTag = MutableStateFlow<NfcTagInfo?>(null)
     val nfcTag: StateFlow<NfcTagInfo?> = _nfcTag.asStateFlow()
 
+    /** True while an NDEF write is armed, waiting for the next tag tap. */
+    private val _nfcArmed = MutableStateFlow(false)
+    val nfcArmed: StateFlow<Boolean> = _nfcArmed.asStateFlow()
+
+    /** Human-readable outcome of the last NDEF write, or null. */
+    private val _nfcWriteStatus = MutableStateFlow<String?>(null)
+    val nfcWriteStatus: StateFlow<String?> = _nfcWriteStatus.asStateFlow()
+
+    fun setNfcArmed(armed: Boolean) {
+        _nfcArmed.value = armed
+    }
+
+    fun onNfcWriteStatus(status: String) {
+        _nfcWriteStatus.value = status
+    }
+
     private val _lastWatchAction = MutableStateFlow<WearContract.Action?>(null)
     val lastWatchAction: StateFlow<WearContract.Action?> = _lastWatchAction.asStateFlow()
 
