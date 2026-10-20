@@ -86,6 +86,9 @@ pixel-flipper-companion/
 
 ## Build
 
+See **[INSTALL.md](INSTALL.md)** for step-by-step install on a Pixel phone and
+Pixel Watch (Wi-Fi or USB).
+
 Requires Android Studio (Ladybug or newer) with the Android SDK; internet access
 to resolve the Android Gradle Plugin.
 
