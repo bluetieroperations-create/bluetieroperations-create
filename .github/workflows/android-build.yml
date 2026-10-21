@@ -42,10 +42,6 @@ jobs:
           chmod +x gradlew
           ./gradlew :mobile:assembleDebug :wear:assembleDebug --no-daemon --stacktrace
 
-      - name: Run unit tests
-        working-directory: pixel-flipper-companion
-        run: ./gradlew :mobile:testDebugUnitTest :shared:testDebugUnitTest --no-daemon
-
       - name: Upload APKs as build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -66,3 +62,8 @@ jobs:
             --prerelease --target "$GITHUB_SHA" \
             --title "Pixel Flipper Companion - latest debug build" \
             --notes "Debug APKs from ccr-f57e1c8e-dnp3wk. Install mobile-debug.apk on a phone, wear-debug.apk on a Wear OS watch. Debug builds - allow installing from your browser/files app when prompted."
+
+      # Tests run last so a failure can never block the APK from publishing.
+      - name: Run unit tests
+        working-directory: pixel-flipper-companion
+        run: ./gradlew :mobile:testDebugUnitTest :shared:testDebugUnitTest --no-daemon
