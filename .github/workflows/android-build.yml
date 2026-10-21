@@ -1,0 +1,61 @@
+name: Build debug APKs
+
+# Builds installable debug APKs for the phone and watch on GitHub's servers,
+# so they can be installed without a local Android toolchain. Runs on pushes to
+# the dev branch and on demand, and publishes the APKs to a rolling prerelease.
+
+on:
+  push:
+    branches: [ "ccr-f57e1c8e-dnp3wk" ]
+    paths: [ "pixel-flipper-companion/**", ".github/workflows/android-build.yml" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build debug APKs
+        working-directory: pixel-flipper-companion
+        run: |
+          chmod +x gradlew
+          ./gradlew :mobile:assembleDebug :wear:assembleDebug --no-daemon --stacktrace
+
+      - name: Run unit tests
+        working-directory: pixel-flipper-companion
+        run: ./gradlew :mobile:testDebugUnitTest :shared:testDebugUnitTest --no-daemon
+
+      - name: Upload APKs as build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-apks
+          path: |
+            pixel-flipper-companion/mobile/build/outputs/apk/debug/mobile-debug.apk
+            pixel-flipper-companion/wear/build/outputs/apk/debug/wear-debug.apk
+
+      - name: Publish to a rolling prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd pixel-flipper-companion
+          gh release delete debug-latest --cleanup-tag --yes || true
+          gh release create debug-latest \
+            mobile/build/outputs/apk/debug/mobile-debug.apk \
+            wear/build/outputs/apk/debug/wear-debug.apk \
+            --prerelease --target "$GITHUB_SHA" \
+            --title "Pixel Flipper Companion - latest debug build" \
+            --notes "Debug APKs from ccr-f57e1c8e-dnp3wk. Install mobile-debug.apk on a phone, wear-debug.apk on a Wear OS watch. Debug builds - allow installing from your browser/files app when prompted."
