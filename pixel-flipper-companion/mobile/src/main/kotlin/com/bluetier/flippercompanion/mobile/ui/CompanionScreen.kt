@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bluetier.flippercompanion.mobile.ble.BleDeviceInfo
+import com.bluetier.flippercompanion.mobile.ble.DeviceIdentity
 import com.bluetier.flippercompanion.mobile.nfc.NfcTagInfo
 
 /**
@@ -188,6 +189,7 @@ private fun BleRow(device: BleDeviceInfo, onConnect: () -> Unit) {
     ) {
         Column(Modifier.padding(12.dp)) {
             Text(device.name ?: "(unnamed)", style = MaterialTheme.typography.titleSmall)
+            Text(DeviceIdentity.describe(device), style = MaterialTheme.typography.labelMedium)
             Text(device.address, fontFamily = FontFamily.Monospace)
             Text("RSSI ${device.rssi} dBm", style = MaterialTheme.typography.bodySmall)
         }

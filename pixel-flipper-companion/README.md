@@ -73,6 +73,9 @@ pixel-flipper-companion/
 - `mobile/.../ble/Proximity.kt` + `ui/FinderScreen.kt` — the hot/cold finder:
   lock onto a device, then follow a smoothed signal and a warmer/colder trend as
   you move. Distance is a rough RSSI estimate, used only relatively.
+- `mobile/.../ble/DeviceIdentity.kt` — labels each advertiser "<maker> · <type>" from
+  its company ID (Apple/Samsung/Google/Microsoft/Nordic) and advertised service
+  UUIDs (heart rate, HID, Fast Pair, SmartTag, Tile…); "Unknown device" otherwise.
 - `mobile/.../ble/TrackerClassifier.kt` + `SweepAnalysis.kt` + `ui/SweepScreen.kt`
   — the unwanted-tracker sweep: classifies advertisers against known item-tracker
   signatures (Apple Find My type `0x12`, Samsung SmartTag `FD5A`/`FD59`, Tile

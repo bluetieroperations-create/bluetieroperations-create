@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.bluetier.flippercompanion.mobile.ble.DeviceIdentity
 import com.bluetier.flippercompanion.mobile.ble.SweepEntry
 
 /**
@@ -83,6 +84,7 @@ private fun SweepRow(entry: SweepEntry) {
                 style = MaterialTheme.typography.titleSmall,
             )
             entry.device.name?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+            Text(DeviceIdentity.describe(entry.device), style = MaterialTheme.typography.labelMedium)
             Text(entry.address, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
             Text(
                 "seen ${entry.device.count}× over ${entry.durationMillis / 1000}s · " +

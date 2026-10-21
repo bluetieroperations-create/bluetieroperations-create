@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.bluetier.flippercompanion.mobile.ble.DeviceIdentity
 import com.bluetier.flippercompanion.mobile.ble.ProximityBand
 import com.bluetier.flippercompanion.mobile.ble.Trend
 
@@ -56,6 +57,7 @@ fun FinderScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                     ) {
                         Column(Modifier.padding(12.dp)) {
                             Text(device.name ?: "(unnamed)", style = MaterialTheme.typography.titleSmall)
+                            Text(DeviceIdentity.describe(device), style = MaterialTheme.typography.labelMedium)
                             Text(device.address, fontFamily = FontFamily.Monospace)
                             Text("RSSI ${device.rssi} dBm", style = MaterialTheme.typography.bodySmall)
                         }
