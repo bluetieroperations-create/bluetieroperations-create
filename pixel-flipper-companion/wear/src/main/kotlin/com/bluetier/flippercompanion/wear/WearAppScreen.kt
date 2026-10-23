@@ -16,6 +16,7 @@ import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.ListHeader
 import androidx.wear.compose.material.Text
 import com.bluetier.flippercompanion.shared.WearContract
+import kotlin.math.roundToInt
 
 /**
  * Wear OS UI. The watch's strongest role is a remote: each chip fires an action
@@ -28,6 +29,8 @@ fun WearAppScreen(viewModel: MainViewModel) {
     val status by viewModel.status.collectAsStateWithLifecycle()
     val scanning by viewModel.scanning.collectAsStateWithLifecycle()
     val devices by viewModel.devices.collectAsStateWithLifecycle()
+    val snap by viewModel.snapState.collectAsStateWithLifecycle()
+    val tracesSent by viewModel.tracesSent.collectAsStateWithLifecycle()
 
     ScalingLazyColumn(modifier = Modifier.fillMaxWidth()) {
         item { ListHeader { Text("Flipper Remote") } }
@@ -61,6 +64,63 @@ fun WearAppScreen(viewModel: MainViewModel) {
             )
         }
 
+        // Snap lab: the sample-rate spike. The headline number is the achieved
+        // accelerometer rate, which decides whether the IMU can characterise a
+        // snap at all or whether the microphone has to carry the decision.
+        item { ListHeader { Text("Snap lab") } }
+
+        item {
+            Chip(
+                label = { Text(if (snap.running) "Stop capture" else "Start capture") },
+                onClick = { viewModel.toggleSnapLab() },
+                colors = if (snap.running) {
+                    ChipDefaults.secondaryChipColors()
+                } else {
+                    ChipDefaults.primaryChipColors()
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = snap.accelAvailable,
+            )
+        }
+
+        if (!snap.accelAvailable) {
+            item { CenteredText("No accelerometer on this watch") }
+        } else {
+            item {
+                CenteredText(
+                    buildString {
+                        append("accel ")
+                        append(snap.accelRate?.let { "${it.hz.roundToInt()} Hz" } ?: "--")
+                        append("  gyro ")
+                        append(
+                            when {
+                                !snap.gyroAvailable -> "none"
+                                else -> snap.gyroRate?.let { "${it.hz.roundToInt()} Hz" } ?: "--"
+                            },
+                        )
+                    },
+                )
+            }
+            item {
+                CenteredText("snaps ${snap.acceptedCount}  rejected ${snap.rejectedCount}  sent $tracesSent")
+            }
+            snap.lastEvent?.let { event ->
+                item {
+                    CenteredText(
+                        buildString {
+                            append(if (event.accepted) "accepted" else event.rejections.joinToString(", ") { it.name })
+                            append(" | ")
+                            // Samples inside the transient: one or two means the
+                            // stream is too slow to see a snap's shape.
+                            append("${event.sampleCount} samples, ")
+                            append("${"%.1f".format(event.durationMs)} ms, ")
+                            append("peak ${"%.1f".format(event.peakDeviation)}")
+                        },
+                    )
+                }
+            }
+        }
+
         if (status.isNotEmpty()) {
             item {
                 Text(
@@ -84,6 +144,15 @@ fun WearAppScreen(viewModel: MainViewModel) {
             }
         }
     }
+}
+
+@Composable
+private fun CenteredText(text: String) {
+    Text(
+        text = text,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+        textAlign = TextAlign.Center,
+    )
 }
 
 @Composable

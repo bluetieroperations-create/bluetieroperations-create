@@ -71,6 +71,7 @@ class MainActivity : ComponentActivity() {
                 onToggleScan = ::onToggleScan,
                 onFind = { withScanPermission(viewModel::enterFinder) },
                 onSweep = { withScanPermission(viewModel::enterSweep) },
+                onProbe = viewModel::enterProbe,
                 onArmTextWrite = { text -> nfcReader.armWrite(NfcMessages.text(text)) },
                 onArmUriWrite = { uri -> nfcReader.armWrite(NfcMessages.uri(uri)) },
                 onCancelNfcWrite = { nfcReader.disarmWrite() },

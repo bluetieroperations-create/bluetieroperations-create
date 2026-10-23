@@ -19,6 +19,9 @@ import com.bluetier.flippercompanion.mobile.ble.SweepEntry
 import com.bluetier.flippercompanion.mobile.ble.Trend
 import com.bluetier.flippercompanion.mobile.ble.TrendTracker
 import com.bluetier.flippercompanion.mobile.nfc.NfcTagInfo
+import com.bluetier.flippercompanion.mobile.probe.CapabilityProbe
+import com.bluetier.flippercompanion.mobile.probe.PointingCapabilities
+import com.bluetier.flippercompanion.mobile.snap.SnapTraceStore
 import com.bluetier.flippercompanion.mobile.obd.ObdController
 import com.bluetier.flippercompanion.mobile.obd.ObdLine
 import com.bluetier.flippercompanion.mobile.obd.UartChannel
@@ -37,7 +40,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /** Which scan-screen view is showing when no device is connected. */
-enum class ScanMode { LIST, FINDER, SWEEP }
+enum class ScanMode { LIST, FINDER, SWEEP, PROBE }
 
 /** A finder target unseen for this long is treated as out of range. */
 private const val STALE_AFTER_MILLIS = 5_000L
@@ -57,6 +60,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val bleScanner = BleScanner(app)
     private val connection = BleConnection(app)
+
+    // Pointing & snap probe. The capability read is fixed hardware, so it is
+    // done once and cached; the trace counters are live from the store the
+    // watch's messages land in.
+    private val _pointingCapabilities = MutableStateFlow<PointingCapabilities?>(null)
+    val pointingCapabilities: StateFlow<PointingCapabilities?> = _pointingCapabilities.asStateFlow()
+
+    val snapTraceCount: StateFlow<Int> = SnapTraceStore.count
+    val snapTraceAccepted: StateFlow<Int> = SnapTraceStore.acceptedCount
+    val lastSnapTrace = SnapTraceStore.lastTrace
+
+    private val _snapTracePath = MutableStateFlow("")
+    val snapTracePath: StateFlow<String> = _snapTracePath.asStateFlow()
     private val obd = ObdController(connection, viewModelScope)
 
     val scanning: StateFlow<Boolean> = bleScanner.scanning
@@ -228,6 +244,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _scanMode.value = ScanMode.SWEEP
         bleScanner.start()
     }
+
+    /**
+     * Enter the pointing & snap probe. Reads the phone's hardware once and
+     * recounts whatever traces are already on disk.
+     */
+    fun enterProbe() {
+        val app = getApplication<Application>()
+        if (_pointingCapabilities.value == null) {
+            _pointingCapabilities.value = CapabilityProbe.probe(app)
+        }
+        _snapTracePath.value = SnapTraceStore.file(app).absolutePath
+        SnapTraceStore.refresh(app)
+        _scanMode.value = ScanMode.PROBE
+    }
+
+    fun refreshSnapTraces() {
+        val app = getApplication<Application>()
+        _snapTracePath.value = SnapTraceStore.file(app).absolutePath
+        SnapTraceStore.refresh(app)
+    }
+
+    fun clearSnapTraces() = SnapTraceStore.clear(getApplication<Application>())
 
     /** Back to the plain scan list; keeps scanning. */
     fun exitScanMode() {

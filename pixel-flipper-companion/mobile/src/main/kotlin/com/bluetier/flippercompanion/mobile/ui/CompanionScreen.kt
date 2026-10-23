@@ -42,6 +42,7 @@ fun CompanionScreen(
     onToggleScan: () -> Unit,
     onFind: () -> Unit,
     onSweep: () -> Unit,
+    onProbe: () -> Unit,
     onArmTextWrite: (String) -> Unit,
     onArmUriWrite: (String) -> Unit,
     onCancelNfcWrite: () -> Unit,
@@ -62,6 +63,7 @@ fun CompanionScreen(
     when (scanMode) {
         ScanMode.FINDER -> { FinderScreen(viewModel, onBack = viewModel::exitScanMode); return }
         ScanMode.SWEEP -> { SweepScreen(viewModel, onBack = viewModel::exitScanMode); return }
+        ScanMode.PROBE -> { ProbeScreen(viewModel, onBack = viewModel::exitScanMode); return }
         ScanMode.LIST -> Unit
     }
 
@@ -109,6 +111,10 @@ fun CompanionScreen(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             OutlinedButton(onClick = onFind, modifier = Modifier.weight(1f)) { Text("Find a device") }
             OutlinedButton(onClick = onSweep, modifier = Modifier.weight(1f)) { Text("Tracker sweep") }
+        }
+        // Needs no BLE permission, so it is not routed through the scan gate.
+        OutlinedButton(onClick = onProbe, modifier = Modifier.fillMaxWidth()) {
+            Text("Pointing & snap probe")
         }
 
         Text("BLE devices (${devices.size}) — tap to connect", style = MaterialTheme.typography.titleMedium)

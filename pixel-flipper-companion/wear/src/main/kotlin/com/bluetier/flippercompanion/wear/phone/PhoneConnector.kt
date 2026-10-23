@@ -1,6 +1,8 @@
 package com.bluetier.flippercompanion.wear.phone
 
 import android.content.Context
+import com.bluetier.flippercompanion.shared.SnapTrace
+import com.bluetier.flippercompanion.shared.SnapTracePayload
 import com.bluetier.flippercompanion.shared.WearContract
 import com.google.android.gms.wearable.CapabilityClient
 import com.google.android.gms.wearable.Wearable
@@ -33,6 +35,23 @@ class PhoneConnector(context: Context) {
                 nodeId,
                 WearContract.PATH_TRIGGER,
                 action.id.toByteArray(Charsets.UTF_8),
+            ).await()
+            SendResult.Delivered
+        }.getOrElse { SendResult.Failed(it) }
+    }
+
+    /**
+     * Ships one captured snap trace to the phone, which accumulates them into a
+     * CSV. Same node discovery as [trigger], so a trace follows the phone
+     * across re-pairings too.
+     */
+    suspend fun sendSnapTrace(trace: SnapTrace): SendResult {
+        val nodeId = bestPhoneNodeId() ?: return SendResult.NoPhoneConnected
+        return runCatching {
+            messageClient.sendMessage(
+                nodeId,
+                WearContract.PATH_SNAP_TRACE,
+                SnapTracePayload.encode(trace),
             ).await()
             SendResult.Delivered
         }.getOrElse { SendResult.Failed(it) }

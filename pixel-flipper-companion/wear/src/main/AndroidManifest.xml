@@ -23,6 +23,15 @@
         android:name="android.hardware.bluetooth_le"
         android:required="false" />
 
+    <!--
+      Android 12 (API 31) caps third-party sensor sampling at 200 Hz without
+      this. A finger snap at the wrist is a ~10-20 ms transient, so the snap
+      lab needs everything the hardware will give; without this permission a
+      measured ceiling of 200 Hz would be this policy rather than the sensor.
+      Normal permission, granted at install, no runtime request.
+    -->
+    <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
+
     <application
         android:allowBackup="true"
         android:icon="@android:drawable/sym_def_app_icon"

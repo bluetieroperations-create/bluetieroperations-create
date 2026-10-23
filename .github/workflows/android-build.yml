@@ -2,11 +2,13 @@ name: Build debug APKs
 
 # Builds installable debug APKs for the phone and watch on GitHub's servers,
 # so they can be installed without a local Android toolchain. Runs on pushes to
-# the dev branch and on demand, and publishes the APKs to a rolling prerelease.
+# the dev branches and on demand, and publishes the APKs to a rolling prerelease.
 
 on:
   push:
-    branches: [ "ccr-f57e1c8e-dnp3wk" ]
+    branches:
+      - "ccr-f57e1c8e-dnp3wk"
+      - "claude/fervent-lovelace-dl6h7k"
     paths: [ "pixel-flipper-companion/**", ".github/workflows/android-build.yml" ]
   workflow_dispatch:
 
@@ -36,6 +38,18 @@ jobs:
       - name: Install required SDK packages
         run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
+      # Each branch publishes to its own prerelease, so a build from a feature
+      # branch cannot replace the APKs a known-good branch published.
+      - name: Pick a release channel
+        id: channel
+        run: |
+          if [ "$GITHUB_REF_NAME" = "ccr-f57e1c8e-dnp3wk" ]; then
+            echo "tag=debug-latest" >> "$GITHUB_OUTPUT"
+          else
+            slug=$(printf '%s' "$GITHUB_REF_NAME" | tr '/_' '--' | tr -cd '[:alnum:]-')
+            echo "tag=debug-$slug" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build debug APKs
         working-directory: pixel-flipper-companion
         run: |
@@ -53,17 +67,23 @@ jobs:
       - name: Publish to a rolling prerelease
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.channel.outputs.tag }}
         run: |
           cd pixel-flipper-companion
-          gh release delete debug-latest --cleanup-tag --yes || true
-          gh release create debug-latest \
+          gh release delete "$TAG" --cleanup-tag --yes || true
+          gh release create "$TAG" \
             mobile/build/outputs/apk/debug/mobile-debug.apk \
             wear/build/outputs/apk/debug/wear-debug.apk \
             --prerelease --target "$GITHUB_SHA" \
-            --title "Pixel Flipper Companion - latest debug build" \
-            --notes "Debug APKs from ccr-f57e1c8e-dnp3wk. Install mobile-debug.apk on a phone, wear-debug.apk on a Wear OS watch. Debug builds - allow installing from your browser/files app when prompted."
+            --title "Pixel Flipper Companion - $GITHUB_REF_NAME" \
+            --notes "Debug APKs from $GITHUB_REF_NAME. Install mobile-debug.apk on a phone, wear-debug.apk on a Wear OS watch. Debug builds - allow installing from your browser/files app when prompted."
 
       # Tests run last so a failure can never block the APK from publishing.
       - name: Run unit tests
         working-directory: pixel-flipper-companion
-        run: ./gradlew :mobile:testDebugUnitTest :shared:testDebugUnitTest --no-daemon
+        run: >
+          ./gradlew
+          :mobile:testDebugUnitTest
+          :shared:testDebugUnitTest
+          :wear:testDebugUnitTest
+          --no-daemon

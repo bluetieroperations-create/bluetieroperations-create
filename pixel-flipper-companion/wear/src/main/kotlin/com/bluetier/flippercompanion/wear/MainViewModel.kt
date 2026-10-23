@@ -7,6 +7,7 @@ import com.bluetier.flippercompanion.shared.WearContract
 import com.bluetier.flippercompanion.wear.ble.WearBleScanner
 import com.bluetier.flippercompanion.wear.phone.PhoneConnector
 import com.bluetier.flippercompanion.wear.phone.SendResult
+import com.bluetier.flippercompanion.wear.sensors.SnapLab
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -19,6 +20,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val connector = PhoneConnector(app)
     private val scanner = WearBleScanner(app)
+    private val snapLab = SnapLab(app)
+
+    val snapState: StateFlow<SnapLab.State> = snapLab.state
+
+    private val _tracesSent = MutableStateFlow(0)
+    val tracesSent: StateFlow<Int> = _tracesSent.asStateFlow()
+
+    init {
+        // Every captured transient goes to the phone, rejected ones included:
+        // tuning the detector is mostly a matter of studying the near-misses.
+        viewModelScope.launch {
+            snapLab.traces.collect { trace ->
+                if (connector.sendSnapTrace(trace) is SendResult.Delivered) {
+                    _tracesSent.value += 1
+                }
+            }
+        }
+    }
 
     private val _phoneReachable = MutableStateFlow(false)
     val phoneReachable: StateFlow<Boolean> = _phoneReachable.asStateFlow()
@@ -54,8 +73,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (scanner.scanning.value) scanner.stop() else scanner.start()
     }
 
+    /**
+     * Starts or stops the snap capture session. Also tells the phone, so the
+     * two ends of a capture run line up in the logs.
+     */
+    fun toggleSnapLab() {
+        if (snapLab.state.value.running) {
+            snapLab.stop()
+            trigger(WearContract.Action.SNAP_LAB_STOP)
+        } else {
+            snapLab.start()
+            trigger(WearContract.Action.SNAP_LAB_START)
+        }
+    }
+
     override fun onCleared() {
         scanner.stop()
+        snapLab.stop()
         super.onCleared()
     }
 }

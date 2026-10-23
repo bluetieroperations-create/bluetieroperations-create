@@ -24,11 +24,19 @@ starter scaffold — buildable in Android Studio — not a finished product.
 | Bonding / pairing | ✅ `createBond()` + bond-state tracking, system pairing dialog | ❌ | needed for encrypted characteristics |
 | OBD-II terminal | ✅ ELM327 terminal over BLE UART (`obd/`) | ❌ | your own adapter, your own car |
 | Trigger phone from wrist | — | ✅ `PhoneConnector` | Wearable Data Layer messaging |
+| Snap detection (wrist IMU) | — | ✅ `SnapLab` + `TransientDetector` | capture/tuning spike; see [SPIKES.md](SPIKES.md) |
+| Pointing capability probe | ✅ `CapabilityProbe` | ❌ | UWB + orientation sensors; see [SPIKES.md](SPIKES.md) |
 | Sub-GHz / 125 kHz / IR | ⚠️ USB-C OTG dongle only | ❌ no USB port | out of scope for this scaffold |
 
 The watch's real role here is a **remote**: its chips send actions
 (`BLE_SCAN`, `NFC_READ`, `NFC_EMULATE`) to the phone, which has the hardware to
 carry them out.
+
+It is also the better *sensor* for a gesture remote, which is what the snap lab
+explores: worn on the arm you point with, its IMU sits ~15 cm from a finger snap
+and its orientation is the forearm's aim vector. See **[SPIKES.md](SPIKES.md)**
+for the two measurements that decide whether a snap-and-point remote is
+buildable on this hardware, and how to run them.
 
 ## Modules
 
@@ -89,6 +97,19 @@ pixel-flipper-companion/
   `ui/ObdScreen.kt`, reached from the GATT browser's "Open as OBD terminal".
 - `mobile/.../wear/PhoneMessageListenerService.kt` — receives watch triggers.
 - `wear/.../phone/PhoneConnector.kt` — discovers the phone by capability and sends triggers.
+- `wear/.../sensors/TransientDetector.kt` — snap detection from the wrist IMU:
+  short, sharp, low-rotation. Every threshold is a `TransientConfig` parameter,
+  and rejected transients are reported too, since tuning is mostly a matter of
+  studying the near-misses.
+- `wear/.../sensors/SampleRateEstimator.kt` — measures the rate a sensor stream
+  *actually* delivers (`SENSOR_DELAY_FASTEST` is a hint, not a contract).
+- `wear/.../sensors/SnapLab.kt` — the capture session: runs the IMU flat out,
+  reports the achieved rate, ships every transient's waveform to the phone.
+- `shared/.../SnapTracePayload.kt` — the trace wire format and CSV row. Hand-rolled
+  delimited text, to keep the phone⇄watch contract free of a serialization dependency.
+- `mobile/.../probe/PointingCapabilities.kt` — the pointing-strategy decision,
+  encoded and unit-tested rather than left to a spec sheet.
+- `mobile/.../snap/SnapTraceStore.kt` — accumulates watch traces into a CSV for `adb pull`.
 
 ## Build
 
@@ -117,14 +138,21 @@ phone app's companion.
 ## Tests
 
 ```bash
-./gradlew :mobile:testDebugUnitTest :shared:testDebugUnitTest
+./gradlew :mobile:testDebugUnitTest :shared:testDebugUnitTest :wear:testDebugUnitTest
 ```
 
 JVM unit tests cover the pure logic — hex parsing, NFC Text-record decoding,
-reconnect backoff, the watch action contract — plus a contract test that pins
-the listener's `pathPrefix` and advertised capability in XML to `WearContract`
-(if those strings drift, watch messages are silently dropped). The BLE/NFC
-classes themselves need a device (or Robolectric) to exercise.
+reconnect backoff, the watch action contract, the snap transient state machine,
+the sample-rate estimator, the trace wire format and the pointing-strategy
+decision — plus a contract test that pins the listener's `pathPrefix` and
+advertised capability in XML to `WearContract` (if those strings drift, watch
+messages are silently dropped). The BLE/NFC/sensor classes themselves need a
+device (or Robolectric) to exercise.
+
+Each module keeps its Android-dependent glue separate from pure logic so the
+logic stays JVM-testable: `TransientDetector` and `SampleRateEstimator` take
+timestamps from the caller, and `CapabilityProbe` (framework) hands back a pure
+`PointingCapabilities` (tested).
 
 ## Known limitations
 

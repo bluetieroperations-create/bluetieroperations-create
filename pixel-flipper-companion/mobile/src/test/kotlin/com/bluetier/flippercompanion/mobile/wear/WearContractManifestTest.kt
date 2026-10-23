@@ -16,7 +16,13 @@ class WearContractManifestTest {
         val manifest = File("src/main/AndroidManifest.xml").readText()
         val prefix = Regex("""android:pathPrefix="([^"]+)"""").find(manifest)?.groupValues?.get(1)
             ?: error("PhoneMessageListenerService has no pathPrefix")
-        assertTrue("$prefix vs ${WearContract.PATH_TRIGGER}", WearContract.PATH_TRIGGER.startsWith(prefix))
+
+        // Every path the watch sends *to the phone*, not just the trigger: a new
+        // path that falls outside the prefix is never delivered, and nothing
+        // fails loudly when that happens.
+        listOf(WearContract.PATH_TRIGGER, WearContract.PATH_SNAP_TRACE).forEach { path ->
+            assertTrue("$path is not covered by pathPrefix $prefix", path.startsWith(prefix))
+        }
     }
 
     @Test fun advertisedCapabilityMatchesContract() {

@@ -1,6 +1,8 @@
 package com.bluetier.flippercompanion.mobile.wear
 
 import android.util.Log
+import com.bluetier.flippercompanion.mobile.snap.SnapTraceStore
+import com.bluetier.flippercompanion.shared.SnapTracePayload
 import com.bluetier.flippercompanion.shared.WearContract
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.WearableListenerService
@@ -13,8 +15,29 @@ import com.google.android.gms.wearable.WearableListenerService
 class PhoneMessageListenerService : WearableListenerService() {
 
     override fun onMessageReceived(event: MessageEvent) {
-        if (event.path != WearContract.PATH_TRIGGER) return
+        when (event.path) {
+            WearContract.PATH_TRIGGER -> onTrigger(event)
+            WearContract.PATH_SNAP_TRACE -> onSnapTrace(event)
+            else -> Unit
+        }
+    }
 
+    /**
+     * Stores one snap trace from the watch. Decode failures are logged and
+     * dropped rather than thrown: a trace is diagnostic data, and losing one to
+     * a version skew is not worth taking the service down for.
+     */
+    private fun onSnapTrace(event: MessageEvent) {
+        val trace = SnapTracePayload.decode(event.data)
+        if (trace == null) {
+            Log.w(TAG, "Undecodable snap trace from node ${event.sourceNodeId}")
+            return
+        }
+        SnapTraceStore.append(this, trace)
+        Log.d(TAG, "Snap trace: accepted=${trace.accepted} hz=${trace.accelHz} n=${trace.sampleCount}")
+    }
+
+    private fun onTrigger(event: MessageEvent) {
         val actionId = String(event.data, Charsets.UTF_8)
         val action = WearContract.Action.fromId(actionId)
         if (action == null) {

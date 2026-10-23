@@ -23,6 +23,15 @@ object WearContract {
     const val PATH_RESULT = "/flipper/result"
 
     /**
+     * MessageClient path: watch -> phone, one snap-candidate trace.
+     *
+     * Payload is encoded by [SnapTracePayload]. Covered by the same "/flipper"
+     * path prefix the phone's listener service is registered for, so adding it
+     * needs no manifest change.
+     */
+    const val PATH_SNAP_TRACE = "/flipper/snap-trace"
+
+    /**
      * Actions the watch can request of the phone. Sent as the UTF-8 message
      * payload on [PATH_TRIGGER]. Kept as plain strings so the payload stays a
      * trivial, versionable contract (no shared serialization dependency).
@@ -35,7 +44,13 @@ object WearContract {
         NFC_EMULATE("nfc_emulate"),
 
         /** Read the next NFC tag the phone is tapped against. */
-        NFC_READ("nfc_read");
+        NFC_READ("nfc_read"),
+
+        /** Start the watch-side snap/sensor capture session. */
+        SNAP_LAB_START("snap_lab_start"),
+
+        /** Stop it. */
+        SNAP_LAB_STOP("snap_lab_stop");
 
         companion object {
             fun fromId(id: String): Action? = entries.firstOrNull { it.id == id }
