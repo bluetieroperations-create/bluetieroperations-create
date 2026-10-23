@@ -179,6 +179,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     WearContract.Action.BLE_SCAN -> startBleScan()
                     WearContract.Action.NFC_READ,
                     WearContract.Action.NFC_EMULATE -> Unit
+                    // The capture session runs on the watch; the phone opens the
+                    // probe screen so the trace counter is already up while you
+                    // stand there snapping.
+                    WearContract.Action.SNAP_LAB_START -> enterProbe()
+                    WearContract.Action.SNAP_LAB_STOP -> refreshSnapTraces()
                 }
             }
         }
