@@ -3,6 +3,7 @@ package com.bluetier.flippercompanion.mobile.target
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.hypot
 import kotlin.math.sin
 import kotlin.math.sqrt
 
@@ -142,6 +143,49 @@ data class TargetRegistry(val targets: List<Target> = emptyList()) {
             .filter { (_, angle) -> angle <= degrees }
             .sortedBy { (_, angle) -> angle }
             .map { (target, _) -> target }
+}
+
+/**
+ * How far apart two bearings are, split into heading and elevation.
+ *
+ * Kept separate because the two are not equally trustworthy. Heading is highly
+ * reproducible: a television is north-north-west of the sofa whether you are
+ * sitting or standing. Elevation is not — it shifts with where you stand, how
+ * tall you are and how much you happen to tilt the phone. Collapsing both into
+ * one number treats a 30 degree elevation error as being as damning as a 30
+ * degree heading error, which it is not.
+ */
+data class Separation(
+    /** Shortest signed heading difference, foreshortened for elevation. */
+    val yawDegrees: Double,
+    /** Signed elevation difference. */
+    val pitchDegrees: Double,
+) {
+    /** Straight-line combination, for when a single figure is wanted. */
+    val magnitudeDegrees: Double get() = hypot(yawDegrees, pitchDegrees)
+}
+
+/** Shortest signed turn from [from] to [to], within -180 until 180. */
+internal fun shortestYawDelta(from: Double, to: Double): Double {
+    var delta = (to - from) % 360.0
+    if (delta > 180.0) delta -= 360.0
+    if (delta < -180.0) delta += 360.0
+    return delta
+}
+
+/**
+ * Splits the gap between two bearings into heading and elevation parts.
+ *
+ * The heading difference is multiplied by the cosine of the mean elevation:
+ * the steeper you point, the less real angle a given heading difference spans,
+ * and straight up it spans none at all.
+ */
+fun separationBetween(a: Bearing, b: Bearing): Separation {
+    val meanPitch = Math.toRadians((a.pitchDegrees + b.pitchDegrees) / 2.0)
+    return Separation(
+        yawDegrees = shortestYawDelta(a.normalizedYaw, b.normalizedYaw) * cos(meanPitch),
+        pitchDegrees = b.pitchDegrees - a.pitchDegrees,
+    )
 }
 
 /** True when two bearings are within [degrees] of each other. */

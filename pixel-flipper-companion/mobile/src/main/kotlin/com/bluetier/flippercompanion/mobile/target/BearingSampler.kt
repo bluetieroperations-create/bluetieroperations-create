@@ -49,8 +49,19 @@ enum class CompassTrust {
  */
 class BearingSampler(
     context: Context,
-    private val axis: PointingAxis = PointingAxis.TOP_EDGE,
+    initialAxis: PointingAxis = PointingAxis.SCREEN_BACK,
 ) {
+    /**
+     * Which way "pointing" means, changeable while running.
+     *
+     * Defaults to the rear camera: "aim the back of the phone at it" is the
+     * gesture everyone already makes, whereas "hold it flat like a remote"
+     * has to be explained and, if misread, quietly inflates elevation by tens
+     * of degrees while leaving heading correct.
+     */
+    @Volatile
+    var axis: PointingAxis = initialAxis
+
     private val sensorManager =
         context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
 

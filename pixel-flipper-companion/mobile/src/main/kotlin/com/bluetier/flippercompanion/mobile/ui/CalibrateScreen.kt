@@ -28,7 +28,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bluetier.flippercompanion.mobile.target.CompassTrust
 import com.bluetier.flippercompanion.mobile.target.HoldState
+import com.bluetier.flippercompanion.mobile.target.PointingAxis
+import com.bluetier.flippercompanion.mobile.target.Candidate
 import com.bluetier.flippercompanion.mobile.target.Resolution
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -50,6 +53,7 @@ fun CalibrateScreen(viewModel: MainViewModel, onBack: () -> Unit) {
     val targets by viewModel.targets.collectAsStateWithLifecycle()
     val status by viewModel.calibrationStatus.collectAsStateWithLifecycle()
     val resolution by viewModel.liveResolution.collectAsStateWithLifecycle()
+    val axis by viewModel.pointingAxis.collectAsStateWithLifecycle()
 
     var label by remember { mutableStateOf("") }
     var action by remember { mutableStateOf("") }
@@ -92,9 +96,34 @@ fun CalibrateScreen(viewModel: MainViewModel, onBack: () -> Unit) {
             }
         }
 
+        // Which way "pointing" means is the single easiest thing to get wrong,
+        // and getting it wrong leaves heading correct while elevation is tens
+        // of degrees out - a failure that looks like a broken compass.
+        Text("How are you holding it?", style = MaterialTheme.typography.titleMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            AxisButton(
+                label = "Camera at it",
+                selected = axis == PointingAxis.SCREEN_BACK,
+                onClick = { viewModel.setPointingAxis(PointingAxis.SCREEN_BACK) },
+                modifier = Modifier.weight(1f),
+            )
+            AxisButton(
+                label = "Flat, like a remote",
+                selected = axis == PointingAxis.TOP_EDGE,
+                onClick = { viewModel.setPointingAxis(PointingAxis.TOP_EDGE) },
+                modifier = Modifier.weight(1f),
+            )
+        }
+
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Point the phone like a remote", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    when (axis) {
+                        PointingAxis.SCREEN_BACK -> "Aim the back of the phone at it"
+                        PointingAxis.TOP_EDGE -> "Hold it flat, top edge towards it"
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                )
                 Text(
                     bearing?.let {
                         "heading ${it.yawDegrees.roundToInt()}°   elevation ${it.pitchDegrees.roundToInt()}°"
@@ -210,12 +239,43 @@ fun CalibrateScreen(viewModel: MainViewModel, onBack: () -> Unit) {
 private fun describe(resolution: Resolution?): String = when (resolution) {
     null -> "waiting…"
     Resolution.EmptyRegistry -> "nothing calibrated yet"
-    is Resolution.NoMatch ->
-        "nothing in this direction" +
-            (resolution.nearestAngleDegrees?.let { " (nearest is ${it.roundToInt()}° away)" } ?: "")
+
+    // Heading and elevation are reported apart, because which of the two is
+    // out says what to do about it: heading means you are aimed elsewhere,
+    // elevation usually means the phone is held at a different tilt.
+    is Resolution.NoMatch -> buildString {
+        append("nothing in this direction")
+        resolution.nearest?.let { near ->
+            append(" — closest is ").append(near.target.label).append(", ")
+            append(offsets(near))
+        }
+    }
+
     is Resolution.Ambiguous ->
         "ambiguous: ${resolution.first.target.label} or ${resolution.second.target.label} — " +
             "would do nothing"
+
     is Resolution.Resolved ->
-        "${resolution.candidate.target.label} (${resolution.candidate.angleDegrees.roundToInt()}° off)"
+        "${resolution.candidate.target.label} (${offsets(resolution.candidate)})"
+}
+
+/** "heading 4° off, elevation 30° off" — the diagnosis, not just a distance. */
+private fun offsets(candidate: Candidate): String {
+    val yaw = candidate.separation.yawDegrees.roundToInt()
+    val pitch = candidate.separation.pitchDegrees.roundToInt()
+    return "heading ${abs(yaw)}° off, elevation ${abs(pitch)}° off"
+}
+
+@Composable
+private fun AxisButton(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (selected) {
+        Button(onClick = onClick, modifier = modifier) { Text(label) }
+    } else {
+        OutlinedButton(onClick = onClick, modifier = modifier) { Text(label) }
+    }
 }

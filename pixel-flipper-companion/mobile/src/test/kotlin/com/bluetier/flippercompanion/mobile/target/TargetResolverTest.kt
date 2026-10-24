@@ -55,6 +55,7 @@ class TargetResolverTest {
         val noMatch = resolution as Resolution.NoMatch
         // Pointing at 300: the lamp at 180 is 120 away, the TV at 90 is 150.
         assertEquals(120.0, noMatch.nearestAngleDegrees!!, 1e-6)
+        assertEquals("lamp", noMatch.nearest!!.target.id)
     }
 
     @Test
@@ -143,28 +144,66 @@ class TargetResolverTest {
 
     @Test
     fun `pitch distinguishes targets sharing a heading`() {
+        // Pitch tolerance is loose by default, so targets separated only by
+        // elevation need a wide gap - or a config that tightens it.
         val registry = registryOf(
-            target("floor_lamp", 90.0, pitch = -35.0),
-            target("ceiling_fan", 90.0, pitch = 35.0),
+            target("floor_lamp", 90.0, pitch = -55.0),
+            target("ceiling_fan", 90.0, pitch = 55.0),
         )
 
-        val down = resolver.resolve(registry, pointingAt(90.0, pitch = -30.0))
-        val up = resolver.resolve(registry, pointingAt(90.0, pitch = 30.0))
+        val down = resolver.resolve(registry, pointingAt(90.0, pitch = -50.0))
+        val up = resolver.resolve(registry, pointingAt(90.0, pitch = 50.0))
 
         assertEquals("floor_lamp", (down as Resolution.Resolved).candidate.target.id)
         assertEquals("ceiling_fan", (up as Resolution.Resolved).candidate.target.id)
     }
 
     @Test
-    fun `a stricter cone refuses what a lenient one accepts`() {
+    fun `a stricter heading tolerance refuses what a lenient one accepts`() {
         val registry = registryOf(target("tv", 90.0))
-        val observation = pointingAt(110.0)
+        val observation = pointingAt(105.0)
 
         assertTrue(TargetResolver().resolve(registry, observation) is Resolution.Resolved)
         assertTrue(
-            TargetResolver(ResolverConfig(maxAngleDegrees = 10.0))
+            TargetResolver(ResolverConfig(maxYawDegrees = 10.0))
                 .resolve(registry, observation) is Resolution.NoMatch,
         )
+    }
+
+    @Test
+    fun `elevation is forgiven where heading is not`() {
+        // The measured failure this exists for: a target captured at 43 degrees
+        // of elevation, aimed at again from 13, with heading only 4 degrees out.
+        // One combined cone rejected that; separate tolerances accept it, since
+        // elevation moves with where you stand and heading does not.
+        val registry = registryOf(target("tv", 349.0, pitch = 43.0))
+
+        val resolution = resolver.resolve(registry, pointingAt(345.0, pitch = 13.0))
+
+        assertTrue("a 30 degree tilt difference should not lose the target", resolution is Resolution.Resolved)
+    }
+
+    @Test
+    fun `the same gap in heading is rejected`() {
+        // 30 degrees of heading is a different matter: you were pointing
+        // somewhere else entirely.
+        val registry = registryOf(target("tv", 349.0, pitch = 43.0))
+
+        val resolution = resolver.resolve(registry, pointingAt(319.0, pitch = 43.0))
+
+        assertTrue(resolution is Resolution.NoMatch)
+    }
+
+    @Test
+    fun `a miss reports which axis was out`() {
+        val registry = registryOf(target("tv", 90.0, pitch = 0.0))
+
+        val resolution = resolver.resolve(registry, pointingAt(180.0, pitch = 0.0))
+
+        val nearest = (resolution as Resolution.NoMatch).nearest!!
+        // Heading is the problem here, and the separation says so.
+        assertTrue(kotlin.math.abs(nearest.separation.yawDegrees) > 60.0)
+        assertEquals(0.0, nearest.separation.pitchDegrees, 1e-6)
     }
 
     @Test
@@ -179,7 +218,11 @@ class TargetResolverTest {
     @Test
     fun `config rejects nonsensical settings`() {
         assertTrue(
-            runCatching { ResolverConfig(maxAngleDegrees = 0.0) }
+            runCatching { ResolverConfig(maxYawDegrees = 0.0) }
+                .exceptionOrNull() is IllegalArgumentException,
+        )
+        assertTrue(
+            runCatching { ResolverConfig(maxPitchDegrees = 0.0) }
                 .exceptionOrNull() is IllegalArgumentException,
         )
         assertTrue(

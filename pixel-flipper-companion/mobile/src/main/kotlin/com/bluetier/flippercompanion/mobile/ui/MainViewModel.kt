@@ -28,6 +28,7 @@ import com.bluetier.flippercompanion.mobile.target.BearingStability
 import com.bluetier.flippercompanion.mobile.target.CompassTrust
 import com.bluetier.flippercompanion.mobile.target.HoldState
 import com.bluetier.flippercompanion.mobile.target.Observation
+import com.bluetier.flippercompanion.mobile.target.PointingAxis
 import com.bluetier.flippercompanion.mobile.target.Resolution
 import com.bluetier.flippercompanion.mobile.target.Target
 import com.bluetier.flippercompanion.mobile.target.TargetRegistry
@@ -103,6 +104,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _calibrationStatus = MutableStateFlow("")
     val calibrationStatus: StateFlow<String> = _calibrationStatus.asStateFlow()
+
+    private val _pointingAxis = MutableStateFlow(PointingAxis.SCREEN_BACK)
+    val pointingAxis: StateFlow<PointingAxis> = _pointingAxis.asStateFlow()
+
+    /**
+     * Switches how the phone is being held. Restarts the hold, since a
+     * half-captured aim means nothing once the pointing direction changes.
+     */
+    fun setPointingAxis(axis: PointingAxis) {
+        bearingSampler.axis = axis
+        _pointingAxis.value = axis
+        restartHold()
+    }
 
     /**
      * What the phone would pick if a snap arrived now. Shown live during

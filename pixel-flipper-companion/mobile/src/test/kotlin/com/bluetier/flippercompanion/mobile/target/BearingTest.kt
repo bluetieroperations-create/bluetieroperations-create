@@ -129,3 +129,58 @@ class BearingTest {
     private fun target(id: String, bearing: Bearing) =
         Target(id = id, label = id, bearing = bearing, action = "switch.$id")
 }
+
+/** The split into heading and elevation, which drives the resolver's tolerance. */
+class SeparationTest {
+
+    @Test
+    fun `pure heading difference shows only in yaw`() {
+        val separation = separationBetween(Bearing(90.0, 0.0), Bearing(110.0, 0.0))
+
+        assertEquals(20.0, separation.yawDegrees, 1e-6)
+        assertEquals(0.0, separation.pitchDegrees, 1e-6)
+    }
+
+    @Test
+    fun `pure elevation difference shows only in pitch`() {
+        val separation = separationBetween(Bearing(90.0, 10.0), Bearing(90.0, 40.0))
+
+        assertEquals(0.0, separation.yawDegrees, 1e-6)
+        assertEquals(30.0, separation.pitchDegrees, 1e-6)
+    }
+
+    @Test
+    fun `heading difference takes the short way round`() {
+        val separation = separationBetween(Bearing(355.0, 0.0), Bearing(5.0, 0.0))
+
+        assertEquals(10.0, separation.yawDegrees, 1e-6)
+    }
+
+    @Test
+    fun `heading counts for less the steeper you point`() {
+        // Thirty degrees of heading spans much less real angle when aimed
+        // steeply upward, and nothing at all straight up.
+        val level = separationBetween(Bearing(0.0, 0.0), Bearing(30.0, 0.0))
+        val steep = separationBetween(Bearing(0.0, 75.0), Bearing(30.0, 75.0))
+
+        assertTrue(
+            "steep=${steep.yawDegrees} should be well under level=${level.yawDegrees}",
+            kotlin.math.abs(steep.yawDegrees) < kotlin.math.abs(level.yawDegrees) * 0.5,
+        )
+    }
+
+    @Test
+    fun `the measured TV case is mostly elevation`() {
+        // Target captured at 349 / 43, aimed at again from 345 / 13.
+        val separation = separationBetween(Bearing(345.0, 13.0), Bearing(349.0, 43.0))
+
+        assertTrue("heading was nearly right", kotlin.math.abs(separation.yawDegrees) < 5.0)
+        assertEquals(30.0, separation.pitchDegrees, 1e-6)
+    }
+
+    @Test
+    fun `signed deltas point the right way`() {
+        assertEquals(-20.0, separationBetween(Bearing(110.0, 0.0), Bearing(90.0, 0.0)).yawDegrees, 1e-6)
+        assertEquals(-30.0, separationBetween(Bearing(90.0, 40.0), Bearing(90.0, 10.0)).pitchDegrees, 1e-6)
+    }
+}
