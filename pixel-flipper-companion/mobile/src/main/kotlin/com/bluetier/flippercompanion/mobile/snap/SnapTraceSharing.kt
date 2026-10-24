@@ -1,9 +1,15 @@
 package com.bluetier.flippercompanion.mobile.snap
 
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.os.Environment
+import android.provider.MediaStore
 import android.util.Log
 import androidx.core.content.FileProvider
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /** Outcome of trying to share the trace CSV, so the UI can say what happened. */
 sealed interface ShareResult {
@@ -13,6 +19,13 @@ sealed interface ShareResult {
     data object NothingToShare : ShareResult
 
     data class Failed(val reason: String) : ShareResult
+}
+
+/** Outcome of copying the CSV into the public Downloads folder. */
+sealed interface ExportResult {
+    data class Exported(val fileName: String, val bytes: Long) : ExportResult
+    data object NothingToExport : ExportResult
+    data class Failed(val reason: String) : ExportResult
 }
 
 /**
@@ -58,6 +71,52 @@ object SnapTraceSharing {
         }.getOrElse {
             Log.w(TAG, "Could not share the snap trace file", it)
             ShareResult.Failed(it.message ?: it::class.java.simpleName)
+        }
+    }
+
+    /**
+     * Copies the CSV into the device's public Downloads folder.
+     *
+     * The share sheet hands another app a `content://` URI with a read grant
+     * scoped to that one share. Apps that copy the bytes immediately are fine;
+     * apps that defer reading until later — an email client waiting until you
+     * press send — can find the grant already gone and attach nothing, which
+     * looks like success and produces a zero-byte file.
+     *
+     * Writing into Downloads sidesteps the whole mechanism: a real file lands
+     * where the Files app, a USB connection and every other app can see it, with
+     * no grant to expire. Uses MediaStore because an app cannot write there
+     * directly under scoped storage.
+     *
+     * Each export is timestamped rather than overwriting, so a capture session
+     * cannot be clobbered by a later one.
+     */
+    fun exportToDownloads(context: Context): ExportResult {
+        val source = SnapTraceStore.file(context)
+        if (!source.exists() || source.length() == 0L) return ExportResult.NothingToExport
+
+        val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+        val fileName = "snap-traces-$stamp.csv"
+
+        return runCatching {
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, "text/csv")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            }
+
+            val uri = context.contentResolver
+                .insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: return ExportResult.Failed("could not create a file in Downloads")
+
+            val written = context.contentResolver.openOutputStream(uri)?.use { out ->
+                source.inputStream().use { input -> input.copyTo(out) }
+            } ?: return ExportResult.Failed("could not open the Downloads file for writing")
+
+            ExportResult.Exported(fileName, written)
+        }.getOrElse {
+            Log.w(TAG, "Could not export the snap trace file", it)
+            ExportResult.Failed(it.message ?: it::class.java.simpleName)
         }
     }
 }

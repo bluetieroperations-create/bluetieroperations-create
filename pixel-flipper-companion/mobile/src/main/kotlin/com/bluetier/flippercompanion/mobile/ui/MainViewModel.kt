@@ -69,6 +69,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     val snapTraceCount: StateFlow<Int> = SnapTraceStore.count
     val snapTraceAccepted: StateFlow<Int> = SnapTraceStore.acceptedCount
+    val snapTraceBytes: StateFlow<Long> = SnapTraceStore.fileBytes
     val lastSnapTrace = SnapTraceStore.lastTrace
 
     private val _snapTracePath = MutableStateFlow("")

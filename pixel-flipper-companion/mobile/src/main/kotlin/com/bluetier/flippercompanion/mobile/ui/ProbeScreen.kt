@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bluetier.flippercompanion.mobile.probe.PointingStrategy
 import com.bluetier.flippercompanion.mobile.probe.SensorCapability
+import com.bluetier.flippercompanion.mobile.snap.ExportResult
 import com.bluetier.flippercompanion.mobile.snap.ShareResult
 import com.bluetier.flippercompanion.mobile.snap.SnapTraceSharing
 import kotlin.math.roundToInt
@@ -45,6 +46,7 @@ fun ProbeScreen(viewModel: MainViewModel, onBack: () -> Unit) {
     val capabilities by viewModel.pointingCapabilities.collectAsStateWithLifecycle()
     val traceCount by viewModel.snapTraceCount.collectAsStateWithLifecycle()
     val acceptedCount by viewModel.snapTraceAccepted.collectAsStateWithLifecycle()
+    val fileBytes by viewModel.snapTraceBytes.collectAsStateWithLifecycle()
     val tracePath by viewModel.snapTracePath.collectAsStateWithLifecycle()
     val lastTrace by viewModel.lastSnapTrace.collectAsStateWithLifecycle()
 
@@ -124,6 +126,26 @@ fun ProbeScreen(viewModel: MainViewModel, onBack: () -> Unit) {
             Text(if (traceCount > 0) "Share CSV ($traceCount traces)" else "Share CSV")
         }
 
+        // The reliable route out. A shared content:// URI carries a read grant
+        // scoped to that one share, and an app that defers reading until later
+        // can find it expired and attach nothing — which looks like success and
+        // yields a zero-byte file. A real file in Downloads has no grant to lose.
+        OutlinedButton(
+            onClick = {
+                shareMessage = when (val result = SnapTraceSharing.exportToDownloads(context)) {
+                    is ExportResult.Exported ->
+                        "Saved to Downloads: ${result.fileName} (${result.bytes / 1024} KB)"
+                    ExportResult.NothingToExport -> "No traces captured yet"
+                    is ExportResult.Failed -> "Could not export: ${result.reason}"
+                }
+                viewModel.refreshSnapTraces()
+            },
+            enabled = traceCount > 0,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Export to Downloads")
+        }
+
         shareMessage?.let { message ->
             Text(message, style = MaterialTheme.typography.bodySmall)
         }
@@ -134,6 +156,11 @@ fun ProbeScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text("$traceCount captured, $acceptedCount accepted")
+                Text(
+                    if (fileBytes > 0) "file: ${fileBytes / 1024} KB on disk"
+                    else "file: EMPTY - nothing written yet",
+                    style = MaterialTheme.typography.bodySmall,
+                )
                 lastTrace?.let { trace ->
                     Text(
                         "last: ${trace.sampleCount} samples over " +

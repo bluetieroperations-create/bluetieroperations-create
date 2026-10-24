@@ -40,6 +40,13 @@ object SnapTraceStore {
     val acceptedCount: StateFlow<Int> = _acceptedCount.asStateFlow()
 
     /**
+     * Size of the CSV on disk. Surfaced so an empty file is visible on screen
+     * rather than discovered after transferring it somewhere and opening it.
+     */
+    private val _fileBytes = MutableStateFlow(0L)
+    val fileBytes: StateFlow<Long> = _fileBytes.asStateFlow()
+
+    /**
      * Prefers external app storage so the CSV can be pulled over adb; falls
      * back to internal storage when external is unavailable (no media mounted),
      * where it is still reachable via `adb shell run-as`.
@@ -75,6 +82,7 @@ object SnapTraceStore {
             _count.value += 1
             if (trace.accepted) _acceptedCount.value += 1
             _lastTrace.value = trace
+            _fileBytes.value = target.length()
         }.onFailure { Log.w(TAG, "Could not append a snap trace", it) }
     }
 
@@ -88,8 +96,10 @@ object SnapTraceStore {
         if (!target.exists()) {
             _count.value = 0
             _acceptedCount.value = 0
+            _fileBytes.value = 0L
             return
         }
+        _fileBytes.value = target.length()
         runCatching {
             // Drop the header; a trailing newline yields one blank entry.
             val rows = target.readLines().drop(1).filter { it.isNotBlank() }
@@ -106,5 +116,6 @@ object SnapTraceStore {
         _count.value = 0
         _acceptedCount.value = 0
         _lastTrace.value = null
+        _fileBytes.value = 0L
     }
 }
