@@ -7,8 +7,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
@@ -52,7 +52,11 @@ fun ProbeScreen(viewModel: MainViewModel, onBack: () -> Unit) {
     var shareMessage by remember { mutableStateOf<String?>(null) }
 
     Column(
-        modifier = Modifier.fillMaxSize().safeDrawingPadding().padding(16.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .safeDrawingPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -92,14 +96,38 @@ fun ProbeScreen(viewModel: MainViewModel, onBack: () -> Unit) {
         }
 
         Text("Sensors", style = MaterialTheme.typography.titleMedium)
-        LazyColumn(
+        // A plain Column, not a LazyColumn: this screen scrolls as a whole, and
+        // a nested lazy list would both fight the outer scroll and swallow the
+        // height everything below it needs.
+        Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            items(caps.sensors, key = { it.sensor.name }) { sensor -> SensorRow(sensor) }
+            caps.sensors.forEach { sensor -> SensorRow(sensor) }
         }
 
         Text("Snap traces from the watch", style = MaterialTheme.typography.titleMedium)
+
+        // Sharing beats adb for getting the data off the phone: tuning means
+        // fetching this file repeatedly, and the share sheet is two taps.
+        Button(
+            onClick = {
+                shareMessage = when (val result = SnapTraceSharing.share(context)) {
+                    ShareResult.Shared -> null
+                    ShareResult.NothingToShare -> "No traces captured yet"
+                    is ShareResult.Failed -> "Could not share: ${result.reason}"
+                }
+            },
+            enabled = traceCount > 0,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(if (traceCount > 0) "Share CSV ($traceCount traces)" else "Share CSV")
+        }
+
+        shareMessage?.let { message ->
+            Text(message, style = MaterialTheme.typography.bodySmall)
+        }
+
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(
                 modifier = Modifier.padding(12.dp),
@@ -123,26 +151,6 @@ fun ProbeScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                     fontFamily = FontFamily.Monospace,
                 )
             }
-        }
-
-        // Sharing beats adb for getting the data off the phone: tuning means
-        // fetching this file repeatedly, and the share sheet is two taps.
-        Button(
-            onClick = {
-                shareMessage = when (val result = SnapTraceSharing.share(context)) {
-                    ShareResult.Shared -> null
-                    ShareResult.NothingToShare -> "No traces captured yet"
-                    is ShareResult.Failed -> "Could not share: ${result.reason}"
-                }
-            },
-            enabled = traceCount > 0,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(if (traceCount > 0) "Share CSV ($traceCount traces)" else "Share CSV")
-        }
-
-        shareMessage?.let { message ->
-            Text(message, style = MaterialTheme.typography.bodySmall)
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
