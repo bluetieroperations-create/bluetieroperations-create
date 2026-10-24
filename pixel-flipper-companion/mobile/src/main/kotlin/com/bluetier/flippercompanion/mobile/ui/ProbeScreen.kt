@@ -120,7 +120,6 @@ fun ProbeScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                     is ShareResult.Failed -> "Could not share: ${result.reason}"
                 }
             },
-            enabled = traceCount > 0,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(if (traceCount > 0) "Share CSV ($traceCount traces)" else "Share CSV")
@@ -135,12 +134,13 @@ fun ProbeScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                 shareMessage = when (val result = SnapTraceSharing.exportToDownloads(context)) {
                     is ExportResult.Exported ->
                         "Saved to Downloads: ${result.fileName} (${result.bytes / 1024} KB)"
-                    ExportResult.NothingToExport -> "No traces captured yet"
+                    is ExportResult.NothingToExport ->
+                        "Nothing to export - exists=${result.exists}, " +
+                            "bytes=${result.bytes}, path=${result.path}"
                     is ExportResult.Failed -> "Could not export: ${result.reason}"
                 }
                 viewModel.refreshSnapTraces()
             },
-            enabled = traceCount > 0,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text("Export to Downloads")

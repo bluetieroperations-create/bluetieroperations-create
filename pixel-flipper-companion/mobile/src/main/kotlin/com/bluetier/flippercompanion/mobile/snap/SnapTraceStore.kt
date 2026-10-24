@@ -93,20 +93,27 @@ object SnapTraceStore {
     @Synchronized
     fun refresh(context: Context) {
         val target = file(context)
-        if (!target.exists()) {
-            _count.value = 0
-            _acceptedCount.value = 0
-            _fileBytes.value = 0L
-            return
-        }
-        _fileBytes.value = target.length()
         runCatching {
+            if (!target.exists()) {
+                publish(bytes = 0L, rows = emptyList())
+                return@runCatching
+            }
+            // Size and contents are read together and published together. Set
+            // separately, a failure between them leaves the row count showing a
+            // stale value beside a size of zero -- a screen contradicting itself.
+            val bytes = target.length()
             // Drop the header; a trailing newline yields one blank entry.
             val rows = target.readLines().drop(1).filter { it.isNotBlank() }
-            _count.value = rows.size
-            // Column 2 (zero-based) is the accepted flag; see CSV_HEADER.
-            _acceptedCount.value = rows.count { it.split(",").getOrNull(2) == "1" }
-        }.onFailure { Log.w(TAG, "Could not read the snap trace file", it) }
+            publish(bytes, rows)
+        }.onFailure { Log.w(TAG, "Could not read the snap trace file at ${target.absolutePath}", it) }
+    }
+
+    /** Updates every counter from one consistent read, so they cannot disagree. */
+    private fun publish(bytes: Long, rows: List<String>) {
+        _fileBytes.value = bytes
+        _count.value = rows.size
+        // Column 2 (zero-based) is the accepted flag; see CSV_HEADER.
+        _acceptedCount.value = rows.count { it.split(",").getOrNull(2) == "1" }
     }
 
     @Synchronized

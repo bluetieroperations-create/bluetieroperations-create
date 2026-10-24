@@ -24,7 +24,12 @@ sealed interface ShareResult {
 /** Outcome of copying the CSV into the public Downloads folder. */
 sealed interface ExportResult {
     data class Exported(val fileName: String, val bytes: Long) : ExportResult
-    data object NothingToExport : ExportResult
+    /** Carries what was actually found, so the screen can say why. */
+    data class NothingToExport(
+        val path: String,
+        val exists: Boolean,
+        val bytes: Long,
+    ) : ExportResult
     data class Failed(val reason: String) : ExportResult
 }
 
@@ -93,7 +98,13 @@ object SnapTraceSharing {
      */
     fun exportToDownloads(context: Context): ExportResult {
         val source = SnapTraceStore.file(context)
-        if (!source.exists() || source.length() == 0L) return ExportResult.NothingToExport
+        if (!source.exists() || source.length() == 0L) {
+            return ExportResult.NothingToExport(
+                path = source.absolutePath,
+                exists = source.exists(),
+                bytes = if (source.exists()) source.length() else 0L,
+            )
+        }
 
         val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
         val fileName = "snap-traces-$stamp.csv"
