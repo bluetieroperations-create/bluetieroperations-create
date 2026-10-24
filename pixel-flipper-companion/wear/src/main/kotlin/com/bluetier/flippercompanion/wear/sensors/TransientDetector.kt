@@ -10,6 +10,19 @@ enum class RejectReason {
 
     /** Carried too much angular rate: a wrist flick or a hand wave, not a snap. */
     TOO_MUCH_ROTATION,
+
+    /**
+     * Hit harder than a snap can. Measured on a wrist, a clap peaks at 74-135
+     * m/s^2 where a snap tops out near 63: two hands colliding carry far more
+     * energy than a finger slipping off a thumb.
+     */
+    TOO_STRONG,
+
+    /**
+     * Over too few samples to be a snap's shape. Real snaps span 8-12 samples
+     * at ~198 Hz; a one- or two-sample blip is a knock or a bump.
+     */
+    TOO_BRIEF,
 }
 
 /**
@@ -27,6 +40,17 @@ data class TransientConfig(
     val exitThreshold: Double = 2.0,
     /** A transient must peak at least this high to count. */
     val minPeak: Double = 8.0,
+    /**
+     * And no higher than this. Measured snaps reach 62.8 and claps start at
+     * 74.1, so the bound sits in the gap between them.
+     */
+    val maxPeak: Double = 68.0,
+    /**
+     * Fewest samples a transient may span. Measured snaps cover 8-12 samples;
+     * this rejects the one- and two-sample blips a knock produces without
+     * coming near a real snap.
+     */
+    val minSampleCount: Int = 5,
     /** Longer than this is not a snap. */
     val maxDurationMs: Double = 60.0,
     /** Peak angular rate above this means the wrist rotated, so not a snap. */
@@ -39,6 +63,9 @@ data class TransientConfig(
     init {
         require(exitThreshold < enterThreshold) {
             "exitThreshold ($exitThreshold) must be below enterThreshold ($enterThreshold)"
+        }
+        require(minPeak < maxPeak) {
+            "minPeak ($minPeak) must be below maxPeak ($maxPeak)"
         }
         require(baselineAlpha > 0.0 && baselineAlpha <= 1.0) {
             "baselineAlpha must be in (0, 1], was $baselineAlpha"
@@ -189,7 +216,9 @@ class TransientDetector(private val config: TransientConfig = TransientConfig())
 
     private fun verdict(): Set<RejectReason> = buildSet {
         if (peakDeviation < config.minPeak) add(RejectReason.WEAK_PEAK)
+        if (peakDeviation > config.maxPeak) add(RejectReason.TOO_STRONG)
         if (peakGyro > config.maxGyro) add(RejectReason.TOO_MUCH_ROTATION)
+        if (sampleCount < config.minSampleCount) add(RejectReason.TOO_BRIEF)
     }
 
     private fun close(

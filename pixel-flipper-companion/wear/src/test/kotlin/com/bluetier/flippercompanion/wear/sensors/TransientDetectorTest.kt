@@ -24,6 +24,24 @@ private class Feeder(
 
     fun quiet(samples: Int) = repeat(samples) { feed(baseline) }
 
+    /**
+     * A transient shaped like a snap measured on a wrist: a sharp onset that
+     * rings down over roughly 45 ms, then falls below the exit threshold.
+     *
+     * [samples] is how many the stream captures. At 198 Hz a real snap covers
+     * 9-12; the default matches that. Earlier versions of these tests used two
+     * or three samples, from an assumption that a snap lasts 10-20 ms — the
+     * recorded data in MeasuredWristTest shows it lasts 35-60 ms.
+     */
+    fun snapLike(peak: Double, gyro: Double = 2.0, samples: Int = 10) {
+        require(samples >= 2) { "a transient needs at least two samples" }
+        repeat(samples - 1) { i ->
+            val decay = 1.0 - (i.toDouble() / (samples - 1)) * 0.95
+            feed(baseline + peak * decay, gyro)
+        }
+        feed(baseline + 0.5, gyro) // below the exit threshold: closes the transient
+    }
+
     companion object {
         /** A still wrist reads about 1 g on the accelerometer. */
         const val GRAVITY = 9.81
@@ -36,57 +54,72 @@ class TransientDetectorTest {
     fun `gravity alone never fires`() {
         // Regression guard: the baseline must be seeded from the first sample,
         // or sample one reads as a ~9.8 m per s2 deviation from zero and fires.
-        val feeder = Feeder(TransientDetector(), hz = 200.0)
+        val feeder = Feeder(TransientDetector(), hz = 198.0)
         feeder.quiet(500)
 
         assertTrue("gravity should not look like a snap", feeder.events.isEmpty())
     }
 
     @Test
-    fun `accepts a short sharp low-rotation spike`() {
-        val feeder = Feeder(TransientDetector(), hz = 200.0)
+    fun `accepts a snap-shaped transient`() {
+        val feeder = Feeder(TransientDetector(), hz = 198.0)
         feeder.quiet(50)
-        feeder.feed(25.0) // opens: deviation ~15.2
-        feeder.feed(18.0) // still above the exit threshold
-        feeder.feed(11.0) // closes: deviation ~1.2
+        feeder.snapLike(peak = 35.0)
 
-        assertEquals(1, feeder.events.size)
         val event = feeder.events.single()
         assertTrue("expected accepted, got ${event.rejections}", event.accepted)
-        assertEquals(15.19, event.peakDeviation, 0.01)
-        assertEquals(10.0, event.durationMs, 0.01)
-        assertEquals(3, event.sampleCount)
+        assertEquals(35.0, event.peakDeviation, 0.01)
+        assertEquals(10, event.sampleCount)
     }
 
     @Test
-    fun `rejects a spike that never gets sharp enough`() {
-        val feeder = Feeder(TransientDetector(), hz = 200.0)
+    fun `rejects a transient that never gets sharp enough`() {
+        val feeder = Feeder(TransientDetector(), hz = 198.0)
         feeder.quiet(50)
-        feeder.feed(16.5) // deviation ~6.7: over enter (6.0), under minPeak (8.0)
-        feeder.feed(10.5)
+        // Over the enter threshold (6.0), under minPeak (8.0).
+        feeder.snapLike(peak = 7.0)
 
-        val event = feeder.events.single()
-        assertEquals(setOf(RejectReason.WEAK_PEAK), event.rejections)
+        assertEquals(setOf(RejectReason.WEAK_PEAK), feeder.events.single().rejections)
+    }
+
+    @Test
+    fun `rejects a clap on peak`() {
+        val feeder = Feeder(TransientDetector(), hz = 198.0)
+        feeder.quiet(50)
+        // Claps measured on a wrist peak at 74-135; snaps top out near 63.
+        feeder.snapLike(peak = 95.0)
+
+        assertEquals(setOf(RejectReason.TOO_STRONG), feeder.events.single().rejections)
     }
 
     @Test
     fun `rejects a wrist flick on angular rate`() {
-        val feeder = Feeder(TransientDetector(), hz = 200.0)
+        val feeder = Feeder(TransientDetector(), hz = 198.0)
         feeder.quiet(50)
-        // Same acceleration shape as an accepted snap, but the wrist rotated.
-        feeder.feed(25.0, gyro = 10.0)
-        feeder.feed(11.0)
+        // The same acceleration shape as a snap, but the wrist rotated.
+        feeder.snapLike(peak = 35.0, gyro = 10.0)
+
+        assertEquals(setOf(RejectReason.TOO_MUCH_ROTATION), feeder.events.single().rejections)
+    }
+
+    @Test
+    fun `rejects a one-or-two sample blip as too brief`() {
+        val feeder = Feeder(TransientDetector(), hz = 198.0)
+        feeder.quiet(50)
+        // A knock: strong enough to open a transient, over almost immediately.
+        feeder.feed(Feeder.GRAVITY + 20.0)
+        feeder.feed(Feeder.GRAVITY + 0.5)
 
         val event = feeder.events.single()
-        assertEquals(setOf(RejectReason.TOO_MUCH_ROTATION), event.rejections)
-        assertTrue(event.peakDeviation > 8.0)
+        assertTrue(RejectReason.TOO_BRIEF in event.rejections)
+        assertEquals(2, event.sampleCount)
     }
 
     @Test
     fun `rejects sustained motion as too long`() {
-        val feeder = Feeder(TransientDetector(), hz = 200.0)
+        val feeder = Feeder(TransientDetector(), hz = 198.0)
         feeder.quiet(50)
-        repeat(20) { feeder.feed(25.0) } // an arm swing, not a snap
+        repeat(20) { feeder.feed(Feeder.GRAVITY + 25.0) } // an arm swing, not a snap
 
         val event = feeder.events.single()
         assertEquals(setOf(RejectReason.TOO_LONG), event.rejections)
@@ -94,27 +127,23 @@ class TransientDetectorTest {
     }
 
     @Test
-    fun `debounce suppresses a second spike inside the dead time`() {
-        val feeder = Feeder(TransientDetector(), hz = 200.0)
+    fun `debounce suppresses a second snap inside the dead time`() {
+        val feeder = Feeder(TransientDetector(), hz = 198.0)
         feeder.quiet(50)
-        feeder.feed(25.0)
-        feeder.feed(11.0)
-        feeder.quiet(20) // 100 ms, inside the 250 ms debounce
-        feeder.feed(25.0)
-        feeder.feed(11.0)
+        feeder.snapLike(peak = 35.0)
+        feeder.quiet(20) // ~100 ms, inside the 250 ms debounce
+        feeder.snapLike(peak = 35.0)
 
         assertEquals("one snap, not two", 1, feeder.events.size)
     }
 
     @Test
-    fun `a second spike after the dead time is detected`() {
-        val feeder = Feeder(TransientDetector(), hz = 200.0)
+    fun `a second snap after the dead time is detected`() {
+        val feeder = Feeder(TransientDetector(), hz = 198.0)
         feeder.quiet(50)
-        feeder.feed(25.0)
-        feeder.feed(11.0)
-        feeder.quiet(80) // 400 ms, clear of the debounce
-        feeder.feed(25.0)
-        feeder.feed(11.0)
+        feeder.snapLike(peak = 35.0)
+        feeder.quiet(80) // ~400 ms, clear of the debounce
+        feeder.snapLike(peak = 35.0)
 
         assertEquals(2, feeder.events.size)
         assertTrue(feeder.events.all { it.accepted })
@@ -122,7 +151,7 @@ class TransientDetectorTest {
 
     @Test
     fun `slow arm motion is absorbed by the baseline`() {
-        val feeder = Feeder(TransientDetector(), hz = 200.0)
+        val feeder = Feeder(TransientDetector(), hz = 198.0)
         feeder.quiet(50)
         // A gentle ramp: the EMA baseline lags by roughly step/alpha, which stays
         // well under the enter threshold.
@@ -136,27 +165,35 @@ class TransientDetectorTest {
     }
 
     @Test
-    fun `at 100 Hz a snap spans only two samples`() {
-        // The headline number for the sample-rate spike. If this is what the
-        // Pixel Watch 3 actually delivers, the IMU cannot characterise a snap's
-        // shape on its own and the microphone has to carry the decision.
+    fun `at 100 Hz a snap only just clears the sample-count gate`() {
+        // Why the achieved rate matters. A ~40 ms snap covers about 10 samples
+        // at 198 Hz but only 5 at 100 Hz — exactly minSampleCount, with nothing
+        // to spare. A slower stream than this cannot see a snap's shape at all.
         val feeder = Feeder(TransientDetector(), hz = 100.0)
         feeder.quiet(50)
-        feeder.feed(25.0)
-        feeder.feed(11.0)
+        feeder.snapLike(peak = 35.0, samples = 5)
 
         val event = feeder.events.single()
-        assertTrue(event.accepted)
-        assertEquals(2, event.sampleCount)
-        assertEquals(10.0, event.durationMs, 0.01)
+        assertTrue("expected accepted, got ${event.rejections}", event.accepted)
+        assertEquals(5, event.sampleCount)
+        assertEquals(TransientConfig().minSampleCount, event.sampleCount)
+    }
+
+    @Test
+    fun `below the sample-count gate the same snap is rejected`() {
+        val feeder = Feeder(TransientDetector(), hz = 60.0)
+        feeder.quiet(50)
+        feeder.snapLike(peak = 35.0, samples = 3)
+
+        assertTrue(RejectReason.TOO_BRIEF in feeder.events.single().rejections)
     }
 
     @Test
     fun `reset clears an open transient`() {
         val detector = TransientDetector()
-        val feeder = Feeder(detector, hz = 200.0)
+        val feeder = Feeder(detector, hz = 198.0)
         feeder.quiet(50)
-        feeder.feed(25.0) // leaves a transient open
+        feeder.feed(Feeder.GRAVITY + 25.0) // leaves a transient open
         detector.reset()
         feeder.quiet(50)
 
@@ -165,26 +202,27 @@ class TransientDetectorTest {
 
     @Test
     fun `config rejects inverted thresholds`() {
-        val error = runCatching {
-            TransientConfig(enterThreshold = 2.0, exitThreshold = 6.0)
-        }.exceptionOrNull()
-
-        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            runCatching { TransientConfig(enterThreshold = 2.0, exitThreshold = 6.0) }
+                .exceptionOrNull() is IllegalArgumentException,
+        )
+        assertTrue(
+            runCatching { TransientConfig(minPeak = 80.0, maxPeak = 10.0) }
+                .exceptionOrNull() is IllegalArgumentException,
+        )
     }
 
     @Test
     fun `a tuned config changes the verdict on the same signal`() {
         // The spike's whole purpose: the same wrist data, re-judged.
-        val strict = Feeder(TransientDetector(TransientConfig(minPeak = 20.0)), hz = 200.0)
+        val strict = Feeder(TransientDetector(TransientConfig(minPeak = 50.0)), hz = 198.0)
         strict.quiet(50)
-        strict.feed(25.0)
-        strict.feed(11.0)
+        strict.snapLike(peak = 35.0)
         assertEquals(setOf(RejectReason.WEAK_PEAK), strict.events.single().rejections)
 
-        val lenient = Feeder(TransientDetector(TransientConfig(minPeak = 5.0)), hz = 200.0)
+        val lenient = Feeder(TransientDetector(TransientConfig(minPeak = 5.0)), hz = 198.0)
         lenient.quiet(50)
-        lenient.feed(25.0)
-        lenient.feed(11.0)
+        lenient.snapLike(peak = 35.0)
         assertTrue(lenient.events.single().accepted)
     }
 }
