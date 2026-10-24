@@ -56,9 +56,14 @@ check the permission survived before believing the ceiling.
 ### Getting the traces off the watch
 
 Every completed transient — accepted *and* rejected — is sent to the phone and
-appended to a CSV. Phone app → *Pointing & snap probe* shows the running count
-and the exact file path. Pull it with the adb-over-Wi-Fi workflow from
-[INSTALL.md](INSTALL.md):
+appended to a CSV. Phone app → *Pointing & snap probe* shows the running count.
+
+**Tap "Share CSV"** and send it wherever you like — email, Drive, a messaging
+app. Tuning means fetching this file over and over, and the share sheet is two
+taps against the ten minutes that pairing a phone, chasing a rotating debug port
+and getting a path right tends to cost.
+
+The adb route still works if you prefer it; the screen shows the exact path:
 
 ```
 adb pull /sdcard/Android/data/com.bluetier.flippercompanion/files/snap-traces.csv

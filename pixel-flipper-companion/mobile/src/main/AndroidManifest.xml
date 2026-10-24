@@ -47,6 +47,22 @@
             </intent-filter>
         </activity>
 
+        <!--
+          Lets the snap-trace CSV be handed to another app (email, Drive) through
+          the share sheet, so pulling it does not require adb. Not exported:
+          access is only ever granted per-URI, per-share, via
+          FLAG_GRANT_READ_URI_PERMISSION.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <!-- Host Card Emulation service: emulates an ISO-DEP (ISO 14443-4) card. -->
         <service
             android:name=".hce.CardEmulationService"

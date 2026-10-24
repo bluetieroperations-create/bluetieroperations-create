@@ -109,7 +109,9 @@ pixel-flipper-companion/
   delimited text, to keep the phone⇄watch contract free of a serialization dependency.
 - `mobile/.../probe/PointingCapabilities.kt` — the pointing-strategy decision,
   encoded and unit-tested rather than left to a spec sheet.
-- `mobile/.../snap/SnapTraceStore.kt` — accumulates watch traces into a CSV for `adb pull`.
+- `mobile/.../snap/SnapTraceStore.kt` — accumulates watch traces into a CSV.
+- `mobile/.../snap/SnapTraceSharing.kt` — hands that CSV to the share sheet via a
+  non-exported `FileProvider`, so getting the data off the phone needs no adb.
 
 ## Build
 

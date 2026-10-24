@@ -9,19 +9,26 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bluetier.flippercompanion.mobile.probe.PointingStrategy
 import com.bluetier.flippercompanion.mobile.probe.SensorCapability
+import com.bluetier.flippercompanion.mobile.snap.ShareResult
+import com.bluetier.flippercompanion.mobile.snap.SnapTraceSharing
 import kotlin.math.roundToInt
 
 /**
@@ -40,6 +47,9 @@ fun ProbeScreen(viewModel: MainViewModel, onBack: () -> Unit) {
     val acceptedCount by viewModel.snapTraceAccepted.collectAsStateWithLifecycle()
     val tracePath by viewModel.snapTracePath.collectAsStateWithLifecycle()
     val lastTrace by viewModel.lastSnapTrace.collectAsStateWithLifecycle()
+
+    val context = LocalContext.current
+    var shareMessage by remember { mutableStateOf<String?>(null) }
 
     Column(
         modifier = Modifier.fillMaxSize().safeDrawingPadding().padding(16.dp),
@@ -113,6 +123,26 @@ fun ProbeScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                     fontFamily = FontFamily.Monospace,
                 )
             }
+        }
+
+        // Sharing beats adb for getting the data off the phone: tuning means
+        // fetching this file repeatedly, and the share sheet is two taps.
+        Button(
+            onClick = {
+                shareMessage = when (val result = SnapTraceSharing.share(context)) {
+                    ShareResult.Shared -> null
+                    ShareResult.NothingToShare -> "No traces captured yet"
+                    is ShareResult.Failed -> "Could not share: ${result.reason}"
+                }
+            },
+            enabled = traceCount > 0,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(if (traceCount > 0) "Share CSV ($traceCount traces)" else "Share CSV")
+        }
+
+        shareMessage?.let { message ->
+            Text(message, style = MaterialTheme.typography.bodySmall)
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

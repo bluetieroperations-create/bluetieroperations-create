@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Paths the FileProvider may hand out to other apps.
+
+  Both locations are declared because SnapTraceStore prefers external app
+  storage and falls back to internal when no media is mounted; the share button
+  has to work either way.
+-->
+<paths>
+    <!-- context.getExternalFilesDir(null) -->
+    <external-files-path
+        name="snap-traces-external"
+        path="." />
+    <!-- context.filesDir -->
+    <files-path
+        name="snap-traces-internal"
+        path="." />
+</paths>
