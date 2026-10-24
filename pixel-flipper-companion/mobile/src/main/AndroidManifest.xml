@@ -3,6 +3,12 @@
 
     <!-- NFC: read/write tags and host-card emulation. -->
     <uses-permission android:name="android.permission.NFC" />
+
+    <!--
+      Dispatching a target's action over HTTP. Local only in practice: a relay
+      on a PC, a Home Assistant webhook, a Raspberry Pi.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-feature
         android:name="android.hardware.nfc"
         android:required="false" />
@@ -30,11 +36,22 @@
         android:name="android.hardware.bluetooth_le"
         android:required="false" />
 
+    <!--
+      Cleartext is permitted because the things this dispatches to live on the
+      home network and speak plain HTTP: a relay script, a hub, a Pi. Android
+      has blocked cleartext by default since 9, and without this every dispatch
+      to an http:// address fails with a cleartext-not-permitted error that
+      reads like the device being unreachable.
+
+      Use https:// wherever the far end offers it; this only removes the
+      platform's refusal to try.
+    -->
     <application
         android:allowBackup="true"
         android:icon="@android:drawable/sym_def_app_icon"
         android:label="@string/app_name"
         android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
         android:theme="@android:style/Theme.DeviceDefault.DayNight">
 
         <activity

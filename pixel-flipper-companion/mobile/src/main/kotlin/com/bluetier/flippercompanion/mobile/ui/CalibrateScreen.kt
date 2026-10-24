@@ -54,6 +54,7 @@ fun CalibrateScreen(viewModel: MainViewModel, onBack: () -> Unit) {
     val status by viewModel.calibrationStatus.collectAsStateWithLifecycle()
     val resolution by viewModel.liveResolution.collectAsStateWithLifecycle()
     val axis by viewModel.pointingAxis.collectAsStateWithLifecycle()
+    val dispatchStatus by viewModel.dispatchStatus.collectAsStateWithLifecycle()
 
     var label by remember { mutableStateOf("") }
     var action by remember { mutableStateOf("") }
@@ -200,6 +201,17 @@ fun CalibrateScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                 describe(resolution),
                 modifier = Modifier.padding(12.dp),
             )
+        }
+
+        // Stands in for the snap until the watch can supply a bearing, and
+        // stays useful after: a target can be tested from where you are rather
+        // than from where it was calibrated.
+        Button(onClick = viewModel::fireAtPointed, modifier = Modifier.fillMaxWidth()) {
+            Text("Fire now")
+        }
+
+        if (dispatchStatus.isNotEmpty()) {
+            Text(dispatchStatus, style = MaterialTheme.typography.bodySmall)
         }
 
         Text("Registered (${targets.size})", style = MaterialTheme.typography.titleMedium)

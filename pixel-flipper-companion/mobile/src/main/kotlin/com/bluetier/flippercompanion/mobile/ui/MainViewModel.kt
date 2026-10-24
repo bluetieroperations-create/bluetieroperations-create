@@ -21,6 +21,9 @@ import com.bluetier.flippercompanion.mobile.ble.TrendTracker
 import com.bluetier.flippercompanion.mobile.nfc.NfcTagInfo
 import com.bluetier.flippercompanion.mobile.probe.CapabilityProbe
 import com.bluetier.flippercompanion.mobile.probe.PointingCapabilities
+import com.bluetier.flippercompanion.mobile.dispatch.ActionParser
+import com.bluetier.flippercompanion.mobile.dispatch.DispatchResult
+import com.bluetier.flippercompanion.mobile.dispatch.Dispatcher
 import com.bluetier.flippercompanion.mobile.snap.SnapTraceStore
 import com.bluetier.flippercompanion.mobile.target.Bearing
 import com.bluetier.flippercompanion.mobile.target.BearingSampler
@@ -104,6 +107,57 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _calibrationStatus = MutableStateFlow("")
     val calibrationStatus: StateFlow<String> = _calibrationStatus.asStateFlow()
+
+    private val dispatcher = Dispatcher()
+
+    private val _dispatchStatus = MutableStateFlow("")
+    val dispatchStatus: StateFlow<String> = _dispatchStatus.asStateFlow()
+
+    /**
+     * Acts on whatever is being pointed at right now.
+     *
+     * Stands in for the snap while the watch cannot yet supply a bearing, and
+     * stays useful afterwards for testing a target without having to stand in
+     * the right place and snap.
+     *
+     * Refusals are honoured: an ambiguous aim fires nothing, because guessing
+     * is what makes a gesture remote untrustworthy.
+     */
+    fun fireAtPointed() {
+        val resolution = liveResolution.value
+        val target = when (resolution) {
+            is Resolution.Resolved -> resolution.candidate.target
+            is Resolution.Ambiguous -> {
+                _dispatchStatus.value =
+                    "Ambiguous - ${resolution.first.target.label} or " +
+                    "${resolution.second.target.label}. Nothing fired."
+                return
+            }
+            is Resolution.NoMatch -> {
+                _dispatchStatus.value = "Not pointing at anything registered"
+                return
+            }
+            Resolution.EmptyRegistry -> {
+                _dispatchStatus.value = "No targets calibrated yet"
+                return
+            }
+            null -> {
+                _dispatchStatus.value = "Waiting for the compass"
+                return
+            }
+        }
+
+        _dispatchStatus.value = "Firing ${target.label}…"
+        viewModelScope.launch {
+            val result = dispatcher.dispatch(ActionParser.parse(target.action))
+            _dispatchStatus.value = when (result) {
+                is DispatchResult.Success -> "${target.label}: ${result.detail}"
+                is DispatchResult.Rejected -> "${target.label} refused it: ${result.detail}"
+                is DispatchResult.Unreachable -> "Could not reach ${target.label}: ${result.detail}"
+                is DispatchResult.NotSupported -> result.detail
+            }
+        }
+    }
 
     private val _pointingAxis = MutableStateFlow(PointingAxis.SCREEN_BACK)
     val pointingAxis: StateFlow<PointingAxis> = _pointingAxis.asStateFlow()
