@@ -122,3 +122,45 @@ through a file manager instead will prompt you to allow "install unknown apps".)
   re-sync; the pins in `gradle/libs.versions.toml` are a starting point.
 - **Scanning finds nothing** — make sure Bluetooth is on and the Nearby-devices
   permission was granted; on first run the app requests it.
+- **`INSTALL_FAILED_UPDATE_INCOMPATIBLE` / "signatures do not match"** — the
+  installed copy was signed with a different key than the one you are
+  installing. This should no longer happen (see *App signing* below), but any
+  build made before the keystore was committed carries a throwaway key, so going
+  from one of those to a current build needs one uninstall:
+
+  ```
+  C:\platform-tools\adb.exe -s <ip>:<port> uninstall com.bluetier.flippercompanion
+  ```
+
+  That clears app data too, including any captured snap traces — pull the CSV
+  first if you want to keep it.
+
+## App signing
+
+Debug builds are signed with `debug.keystore`, committed at the root of
+`pixel-flipper-companion/`. Every build — CI or local, any machine — therefore
+produces the same signature, and updates install over each other with plain
+`adb install -r`.
+
+Without it, AGP generates a fresh debug key wherever none exists, so each CI
+runner signed with a different key and no two builds could replace one another.
+
+The keystore holds the standard Android debug credentials (store and key
+password `android`, alias `androiddebugkey`). It is deliberately not a secret:
+a debug key cannot publish to Play, and the whole point of checking it in is
+that everyone and every runner shares it. **Release signing must never work this
+way** — a release key belongs in a secret store, never in git.
+
+Each CI run prints the resulting certificate digests (step *Report APK signing
+certificates*), so if signatures ever drift again it is visible in the build log
+instead of only on a phone. The committed keystore's certificate is:
+
+```
+SHA-256: BF:74:C8:52:01:88:88:62:BD:35:49:4F:FD:A4:E6:C6:C1:C3:85:92:EB:76:1D:4D:52:0F:5C:93:FD:45:F8:68
+```
+
+To confirm what a given APK is signed with:
+
+```
+$ANDROID_HOME/build-tools/35.0.0/apksigner verify --print-certs mobile-debug.apk
+```

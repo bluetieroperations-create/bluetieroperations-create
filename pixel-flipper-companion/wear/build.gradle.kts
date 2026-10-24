@@ -16,6 +16,19 @@ android {
         versionName = "0.1.0"
     }
 
+    // Shares the repo's committed debug keystore with :mobile. Both modules use
+    // the same applicationId, so matching signatures are what let the phone and
+    // watch halves install as one app. See :mobile for why this is checked in.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = rootProject.file("debug.keystore")
+            storeType = "PKCS12"
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false

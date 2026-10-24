@@ -16,6 +16,27 @@ android {
         versionName = "0.1.0"
     }
 
+    // Debug builds are signed with a keystore committed to this repo, so every
+    // build carries the same signature whoever makes it. Without it AGP
+    // generates a fresh debug key per machine, which means an APK from one CI
+    // run cannot be installed over one from another: adb reports
+    // INSTALL_FAILED_UPDATE_INCOMPATIBLE and the only way out is uninstalling
+    // first, losing app data each update.
+    //
+    // This file is not a secret. The credentials below are the standard Android
+    // debug ones, a debug key cannot be used to publish to Play, and the point
+    // of checking it in is precisely that everyone shares it. Release signing
+    // must never work this way.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = rootProject.file("debug.keystore")
+            storeType = "PKCS12"
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false

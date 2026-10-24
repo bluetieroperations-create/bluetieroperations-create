@@ -56,6 +56,20 @@ jobs:
           chmod +x gradlew
           ./gradlew :mobile:assembleDebug :wear:assembleDebug --no-daemon --stacktrace
 
+      # The signing certificate is printed on every build so signature drift is
+      # visible here rather than surfacing as INSTALL_FAILED_UPDATE_INCOMPATIBLE
+      # on a phone. These digests come from the committed debug.keystore and
+      # should be identical on every run; if they change, the keystore did.
+      - name: Report APK signing certificates
+        run: |
+          apksigner="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          for apk in \
+            pixel-flipper-companion/mobile/build/outputs/apk/debug/mobile-debug.apk \
+            pixel-flipper-companion/wear/build/outputs/apk/debug/wear-debug.apk ; do
+            echo "== $(basename "$apk")"
+            "$apksigner" verify --print-certs "$apk" | grep -i "SHA-256 digest"
+          done
+
       - name: Upload APKs as build artifacts
         uses: actions/upload-artifact@v4
         with:
