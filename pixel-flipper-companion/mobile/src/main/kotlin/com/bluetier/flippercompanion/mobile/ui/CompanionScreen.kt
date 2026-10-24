@@ -43,6 +43,7 @@ fun CompanionScreen(
     onFind: () -> Unit,
     onSweep: () -> Unit,
     onProbe: () -> Unit,
+    onCalibrate: () -> Unit,
     onArmTextWrite: (String) -> Unit,
     onArmUriWrite: (String) -> Unit,
     onCancelNfcWrite: () -> Unit,
@@ -64,6 +65,7 @@ fun CompanionScreen(
         ScanMode.FINDER -> { FinderScreen(viewModel, onBack = viewModel::exitScanMode); return }
         ScanMode.SWEEP -> { SweepScreen(viewModel, onBack = viewModel::exitScanMode); return }
         ScanMode.PROBE -> { ProbeScreen(viewModel, onBack = viewModel::exitScanMode); return }
+        ScanMode.CALIBRATE -> { CalibrateScreen(viewModel, onBack = viewModel::exitCalibrate); return }
         ScanMode.LIST -> Unit
     }
 
@@ -112,9 +114,16 @@ fun CompanionScreen(
             OutlinedButton(onClick = onFind, modifier = Modifier.weight(1f)) { Text("Find a device") }
             OutlinedButton(onClick = onSweep, modifier = Modifier.weight(1f)) { Text("Tracker sweep") }
         }
-        // Needs no BLE permission, so it is not routed through the scan gate.
-        OutlinedButton(onClick = onProbe, modifier = Modifier.fillMaxWidth()) {
-            Text("Pointing & snap probe")
+        // Neither needs BLE permission, so they are not routed through the
+        // scan gate. Calibration does read the BLE census when it is running,
+        // but works without it.
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = onProbe, modifier = Modifier.weight(1f)) {
+                Text("Probe")
+            }
+            OutlinedButton(onClick = onCalibrate, modifier = Modifier.weight(1f)) {
+                Text("Calibrate targets")
+            }
         }
 
         Text("BLE devices (${devices.size}) — tap to connect", style = MaterialTheme.typography.titleMedium)

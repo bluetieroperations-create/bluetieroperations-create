@@ -72,6 +72,7 @@ class MainActivity : ComponentActivity() {
                 onFind = { withScanPermission(viewModel::enterFinder) },
                 onSweep = { withScanPermission(viewModel::enterSweep) },
                 onProbe = viewModel::enterProbe,
+                onCalibrate = viewModel::enterCalibrate,
                 onArmTextWrite = { text -> nfcReader.armWrite(NfcMessages.text(text)) },
                 onArmUriWrite = { uri -> nfcReader.armWrite(NfcMessages.uri(uri)) },
                 onCancelNfcWrite = { nfcReader.disarmWrite() },

@@ -22,12 +22,24 @@ import com.bluetier.flippercompanion.mobile.nfc.NfcTagInfo
 import com.bluetier.flippercompanion.mobile.probe.CapabilityProbe
 import com.bluetier.flippercompanion.mobile.probe.PointingCapabilities
 import com.bluetier.flippercompanion.mobile.snap.SnapTraceStore
+import com.bluetier.flippercompanion.mobile.target.Bearing
+import com.bluetier.flippercompanion.mobile.target.BearingSampler
+import com.bluetier.flippercompanion.mobile.target.BearingStability
+import com.bluetier.flippercompanion.mobile.target.CompassTrust
+import com.bluetier.flippercompanion.mobile.target.HoldState
+import com.bluetier.flippercompanion.mobile.target.Observation
+import com.bluetier.flippercompanion.mobile.target.Resolution
+import com.bluetier.flippercompanion.mobile.target.Target
+import com.bluetier.flippercompanion.mobile.target.TargetRegistry
+import com.bluetier.flippercompanion.mobile.target.TargetResolver
+import com.bluetier.flippercompanion.mobile.target.TargetStore
 import com.bluetier.flippercompanion.mobile.obd.ObdController
 import com.bluetier.flippercompanion.mobile.obd.ObdLine
 import com.bluetier.flippercompanion.mobile.obd.UartChannel
 import com.bluetier.flippercompanion.mobile.wear.WearBridge
 import com.bluetier.flippercompanion.shared.WearContract
 import java.util.UUID
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -40,7 +52,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /** Which scan-screen view is showing when no device is connected. */
-enum class ScanMode { LIST, FINDER, SWEEP, PROBE }
+enum class ScanMode { LIST, FINDER, SWEEP, PROBE, CALIBRATE }
 
 /** A finder target unseen for this long is treated as out of range. */
 private const val STALE_AFTER_MILLIS = 5_000L
@@ -74,6 +86,38 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _snapTracePath = MutableStateFlow("")
     val snapTracePath: StateFlow<String> = _snapTracePath.asStateFlow()
+
+    // Pointing: live bearing, the calibrated registry, and what the two of them
+    // plus the BLE census currently resolve to.
+    private val bearingSampler = BearingSampler(app)
+    private val stability = BearingStability()
+    private val resolver = TargetResolver()
+
+    val liveBearing: StateFlow<Bearing?> = bearingSampler.bearing
+    val compassTrust: StateFlow<CompassTrust> = bearingSampler.trust
+    val compassAvailable: Boolean = bearingSampler.available
+    val targets: StateFlow<TargetRegistry> = TargetStore.registry
+
+    private val _holdState = MutableStateFlow<HoldState>(HoldState.Moving)
+    val holdState: StateFlow<HoldState> = _holdState.asStateFlow()
+
+    private val _calibrationStatus = MutableStateFlow("")
+    val calibrationStatus: StateFlow<String> = _calibrationStatus.asStateFlow()
+
+    /**
+     * What the phone would pick if a snap arrived now. Shown live during
+     * calibration, so a registry can be checked by walking around pointing at
+     * things rather than by snapping and watching what happens.
+     */
+    val liveResolution: StateFlow<Resolution?> =
+        combine(bearingSampler.bearing, TargetStore.registry, bleScanner.devices) { bearing, registry, devices ->
+            bearing?.let {
+                resolver.resolve(
+                    registry,
+                    Observation(it, devices.mapValues { (_, device) -> device.smoothedRssi }),
+                )
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     private val obd = ObdController(connection, viewModelScope)
 
     val scanning: StateFlow<Boolean> = bleScanner.scanning
@@ -172,6 +216,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     init {
+        // Drive point-and-hold from the live bearing while calibrating.
+        viewModelScope.launch {
+            bearingSampler.bearing.collect { bearing ->
+                if (bearing != null && _scanMode.value == ScanMode.CALIBRATE) {
+                    _holdState.value = stability.update(System.currentTimeMillis(), bearing)
+                }
+            }
+        }
+
         // React to triggers pushed from the watch.
         viewModelScope.launch {
             WearBridge.actions.collect { action ->
@@ -273,6 +326,82 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearSnapTraces() = SnapTraceStore.clear(getApplication<Application>())
 
+    // Calibration
+    /** Enter calibration: start the compass and load whatever is stored. */
+    fun enterCalibrate() {
+        val app = getApplication<Application>()
+        TargetStore.load(app)
+        stability.reset()
+        _holdState.value = HoldState.Moving
+        _calibrationStatus.value = ""
+        bearingSampler.start()
+        _scanMode.value = ScanMode.CALIBRATE
+    }
+
+    fun exitCalibrate() {
+        bearingSampler.stop()
+        stability.reset()
+        _scanMode.value = ScanMode.LIST
+    }
+
+    /** Start a fresh point-and-hold, discarding whatever was captured. */
+    fun restartHold() {
+        stability.reset()
+        _holdState.value = HoldState.Moving
+        _calibrationStatus.value = ""
+    }
+
+    /**
+     * Stores the captured bearing as a target. Returns false, with a reason in
+     * [calibrationStatus], when there is nothing captured or the write fails.
+     */
+    fun saveCapturedTarget(label: String, action: String, bleAddress: String?): Boolean {
+        val captured = (_holdState.value as? HoldState.Captured)?.bearing
+        if (captured == null) {
+            _calibrationStatus.value = "Point at it and hold still first"
+            return false
+        }
+        if (label.isBlank() || action.isBlank()) {
+            _calibrationStatus.value = "A target needs a name and an action"
+            return false
+        }
+
+        val target = Target(
+            id = label.lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_').ifBlank { "target" },
+            label = label.trim(),
+            bearing = captured,
+            action = action.trim(),
+            bleAddress = bleAddress?.takeIf { it.isNotBlank() },
+        )
+
+        val saved = TargetStore.add(getApplication<Application>(), target)
+        _calibrationStatus.value = if (saved) {
+            stability.reset()
+            _holdState.value = HoldState.Moving
+            buildString {
+                append("Saved ").append(target.label)
+                // Two targets closer together than the compass can separate
+                // will never resolve reliably, so say so at the point of
+                // creating the problem rather than leaving it to be found.
+                TargetStore.registry.value.tightestSeparationDegrees()?.let { gap ->
+                    if (gap < 15.0) {
+                        append(" - warning: two targets are only ")
+                        append(gap.roundToInt())
+                        append(" degrees apart")
+                    }
+                }
+            }
+        } else {
+            "Could not save"
+        }
+        return saved
+    }
+
+    fun removeTarget(id: String) {
+        TargetStore.remove(getApplication<Application>(), id)
+        _calibrationStatus.value = "Removed"
+    }
+
     /** Back to the plain scan list; keeps scanning. */
     fun exitScanMode() {
         _scanMode.value = ScanMode.LIST
@@ -361,6 +490,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun UUID.short(): String = toString().take(8)
 
     override fun onCleared() {
+        bearingSampler.stop()
         bleScanner.stop()
         obd.stop()
         connection.disconnect()
