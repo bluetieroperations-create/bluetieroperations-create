@@ -62,8 +62,15 @@ class BearingRing(val capacity: Int = 256) {
      * the steady aim that preceded it. Returns null when nothing was recorded
      * in that window, which happens if a snap arrives before the orientation
      * stream has warmed up.
+     *
+     * The default lag covers the wind-up, not just the snap. Detection fires at
+     * the end of the transient, but the hand has been rotating since before it:
+     * the fingers are loaded against the thumb and released, and the wrist turns
+     * through all of it. A window ending 120 ms back still sat inside that
+     * motion and measured the wind-up as wobble, which read as an arm that was
+     * never held still.
      */
-    fun aimBefore(atNanos: Long, lagMs: Double = 120.0, windowMs: Double = 200.0): Aim? {
+    fun aimBefore(atNanos: Long, lagMs: Double = 250.0, windowMs: Double = 200.0): Aim? {
         val end = atNanos - (lagMs * 1_000_000.0).toLong()
         val start = end - (windowMs * 1_000_000.0).toLong()
 

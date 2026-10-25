@@ -13,6 +13,7 @@ import com.bluetier.flippercompanion.shared.SnapPoint
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlin.math.roundToInt
 
 /**
  * Turns a snap from the watch into something happening in the house.
@@ -31,11 +32,17 @@ object SnapPointHandler {
     /**
      * Widest wobble, in degrees, still counted as a deliberate aim.
      *
-     * Measured snaps held the arm to well under this. The point is to reject a
-     * snap thrown mid-gesture, where the "direction" is wherever the arm
-     * happened to be sweeping through.
+     * The point is to reject a snap thrown mid-gesture, where the "direction"
+     * is wherever the arm happened to be sweeping through.
+     *
+     * 12 came from a wrist deliberately held still against a bench, and an arm
+     * raised and pointed in a room does not do that: it declined real snaps. An
+     * unsupported arm holding a direction wanders several degrees on its own,
+     * and a 20-degree resolver tolerance is the thing that actually decides
+     * whether a bearing hits a target, so a limit far under it was rejecting
+     * aims that would have resolved correctly.
      */
-    private const val MAX_AIM_SPREAD_DEGREES = 12.0
+    private const val MAX_AIM_SPREAD_DEGREES = 25.0
 
     private val resolver = TargetResolver()
     private val dispatcher = Dispatcher()
@@ -56,7 +63,9 @@ object SnapPointHandler {
         visibleRssi: Map<String, Double> = emptyMap(),
     ): String {
         if (point.aimSpreadDegrees > MAX_AIM_SPREAD_DEGREES) {
-            return outcome("Arm was moving — ignored")
+            // With the number: "too much" that will not say how much leaves
+            // nobody able to tell a near miss from a wild swing.
+            return outcome("Arm was moving (${point.aimSpreadDegrees.roundToInt()}°) — ignored")
         }
 
         // The registry may not have been loaded in this process yet: a snap can

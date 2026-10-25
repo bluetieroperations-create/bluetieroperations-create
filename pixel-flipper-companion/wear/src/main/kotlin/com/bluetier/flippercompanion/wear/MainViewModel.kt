@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -55,7 +56,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             snapRemote.snaps.collect { point ->
                 WatchResultBridge.clear()
                 _remoteStatus.value = when (val result = connector.sendSnapPoint(point)) {
-                    SendResult.Delivered -> "Snap sent…"
+                    SendResult.Delivered ->
+                        "Snap sent, wobble ${point.aimSpreadDegrees.roundToInt()}°"
                     SendResult.NoPhoneConnected -> "No phone connected"
                     is SendResult.Failed -> "Send failed: ${result.error.message}"
                 }

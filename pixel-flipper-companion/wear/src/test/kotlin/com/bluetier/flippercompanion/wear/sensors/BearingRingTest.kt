@@ -72,7 +72,7 @@ class BearingRingTest {
     fun `spread is measured across the compass wraparound`() {
         val ring = BearingRing()
         listOf(358.0, 359.0, 0.0, 1.0, 2.0).forEachIndexed { i, yaw ->
-            // All inside the default window ending 120 ms before 600 ms.
+            // All inside the default window ending 250 ms before 600 ms.
             ring.add(ms(300 + i * 10L), Bearing(yaw, 0.0))
         }
 
@@ -88,7 +88,7 @@ class BearingRingTest {
         val ring = BearingRing()
         steady(ring, yaw = 90.0, fromMs = 0, toMs = 100)
 
-        // Window would be 680..880 ms; nothing was recorded there.
+        // Window would be 550..750 ms; nothing was recorded there.
         assertNull(ring.aimBefore(ms(1_000)))
     }
 
