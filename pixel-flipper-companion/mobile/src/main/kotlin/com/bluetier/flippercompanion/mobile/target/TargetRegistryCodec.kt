@@ -41,6 +41,16 @@ object TargetRegistryCodec {
             append(FIELD).append("label=").append(escape(target.label))
             append(FIELD).append("yaw=").append(target.bearing.yawDegrees)
             append(FIELD).append("pitch=").append(target.bearing.pitchDegrees)
+            if (target.extraAims.isNotEmpty()) {
+                // yaw,pitch pairs joined by '|'. A file written before extra
+                // aims existed simply has no such field and decodes to none,
+                // so an upgrade keeps every target already calibrated.
+                append(FIELD).append("aims=").append(
+                    target.extraAims.joinToString("|") {
+                        "${it.yawDegrees},${it.pitchDegrees}"
+                    },
+                )
+            }
             append(FIELD).append("action=").append(escape(target.action))
             target.bleAddress?.let { append(FIELD).append("ble=").append(escape(it)) }
             target.nfcTagUid?.let { append(FIELD).append("nfc=").append(escape(it)) }
@@ -84,6 +94,17 @@ object TargetRegistryCodec {
                 yawDegrees = fields.getValue("yaw").toDouble(),
                 pitchDegrees = fields.getValue("pitch").toDouble(),
             ),
+            extraAims = fields["aims"]
+                ?.split('|')
+                ?.mapNotNull { pair ->
+                    // A malformed aim costs that aim, not the target: a
+                    // television with one readable bearing still works.
+                    val parts = pair.split(',')
+                    val yaw = parts.getOrNull(0)?.toDoubleOrNull()
+                    val pitch = parts.getOrNull(1)?.toDoubleOrNull()
+                    if (yaw == null || pitch == null) null else Bearing(yaw, pitch)
+                }
+                .orEmpty(),
             action = fields.getValue("action"),
             bleAddress = fields["ble"],
             nfcTagUid = fields["nfc"],

@@ -141,6 +141,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
+     * Waits for a snap that teaches an existing target another way of being
+     * pointed at, instead of defining a new one.
+     */
+    fun armAimFor(targetId: String) {
+        _captureArmed.value = false
+        _dispatchStatus.value = ""
+        _calibrationStatus.value = "Point at it and snap — this adds an aim"
+        WatchCapture.armFor(targetId)
+    }
+
+    /**
      * Waits for a snap to say where the target is, rather than reading it off
      * this phone.
      *

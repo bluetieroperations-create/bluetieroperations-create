@@ -17,11 +17,28 @@ data class Target(
     val id: String,
     val label: String,
     val bearing: Bearing,
+    /**
+     * Further bearings recorded for the same thing, from the same seat.
+     *
+     * One aim describes one way of pointing, and a person does not reproduce
+     * a pose to the degree. Measured on a wrist, repeated honest attempts at
+     * the same television spread tens of degrees in heading - how far the arm
+     * extends, how the wrist is rolled, how far back in the seat they sit.
+     *
+     * Widening the tolerance to swallow that spread would blur every target in
+     * the room together. Recording several real attempts instead describes the
+     * spread that actually exists, in the shape it actually has, and leaves
+     * targets elsewhere alone.
+     */
+    val extraAims: List<Bearing> = emptyList(),
     val action: String,
     val bleAddress: String? = null,
     /** UID of the NFC tag that calibrated this target, if one did. */
     val nfcTagUid: String? = null,
 ) {
+    /** Every recorded way of pointing at this, the original first. */
+    val aims: List<Bearing> get() = listOf(bearing) + extraAims
+
     init {
         require(id.isNotBlank()) { "a target needs an id" }
         require(label.isNotBlank()) { "a target needs a label" }

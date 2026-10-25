@@ -185,12 +185,50 @@ class TargetResolverTest {
     }
 
     @Test
-    fun `the same gap in heading is rejected`() {
-        // 30 degrees of heading is a different matter: you were pointing
-        // somewhere else entirely.
+    fun `a large gap in heading is still rejected`() {
+        // This asserted 30 degrees was "pointing somewhere else entirely",
+        // which measured snaps disproved: honest attempts at one television
+        // from one seat landed 16, 31 and 32 degrees out, because an arm is
+        // not reproducible the way a television is.
+        //
+        // The boundary moved to 30 and the test moved with it. 45 is past any
+        // of those attempts and still well inside the 180 that would make
+        // every direction match.
         val registry = registryOf(target("tv", 349.0, pitch = 43.0))
 
-        val resolution = resolver.resolve(registry, pointingAt(319.0, pitch = 43.0))
+        val resolution = resolver.resolve(registry, pointingAt(304.0, pitch = 43.0))
+
+        assertTrue(resolution is Resolution.NoMatch)
+    }
+
+    @Test
+    fun `an extra aim rescues a pose the first one misses`() {
+        // The point of recording several aims: the second attempt is 40
+        // degrees from the first, outside tolerance of it, and inside
+        // tolerance of itself.
+        val base = target("tv", 349.0, pitch = 10.0)
+        val taught = base.copy(extraAims = listOf(Bearing(309.0, 10.0)))
+
+        assertTrue(
+            "one aim should not cover it",
+            resolver.resolve(registryOf(base), pointingAt(309.0, pitch = 10.0))
+                is Resolution.NoMatch,
+        )
+        assertTrue(
+            "the taught aim should",
+            resolver.resolve(registryOf(taught), pointingAt(309.0, pitch = 10.0))
+                is Resolution.Resolved,
+        )
+    }
+
+    @Test
+    fun `extra aims do not widen a target towards everything`() {
+        // Teaching aims must not degrade into "matches anything": a direction
+        // far from every recorded aim is still a miss.
+        val taught = target("tv", 349.0, pitch = 10.0)
+            .copy(extraAims = listOf(Bearing(309.0, 10.0), Bearing(329.0, 10.0)))
+
+        val resolution = resolver.resolve(registryOf(taught), pointingAt(180.0, pitch = 10.0))
 
         assertTrue(resolution is Resolution.NoMatch)
     }

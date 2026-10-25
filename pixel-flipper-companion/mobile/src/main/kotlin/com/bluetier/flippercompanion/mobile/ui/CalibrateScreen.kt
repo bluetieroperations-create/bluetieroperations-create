@@ -192,6 +192,8 @@ fun CalibrateScreen(viewModel: MainViewModel, onBack: () -> Unit) {
             }
         }
 
+        val armedFor by WatchCapture.armedForTargetId.collectAsStateWithLifecycle()
+
         targets.targets.forEach { target ->
             Card(modifier = Modifier.fillMaxWidth()) {
                 Row(
@@ -203,9 +205,30 @@ fun CalibrateScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                         Text(target.label, style = MaterialTheme.typography.titleSmall)
                         Text(
                             "${target.bearing.yawDegrees.roundToInt()}° / " +
-                                "${target.bearing.pitchDegrees.roundToInt()}°  ·  ${target.action}",
+                                "${target.bearing.pitchDegrees.roundToInt()}°" +
+                                (if (target.extraAims.isEmpty()) {
+                                    ""
+                                } else {
+                                    " +${target.extraAims.size} more aims"
+                                }) +
+                                "  ·  ${target.action}",
                             style = MaterialTheme.typography.bodySmall,
                         )
+                        // Teaching the target how else this person points at
+                        // it, which is cheaper than loosening the tolerance
+                        // for every target in the room.
+                        OutlinedButton(
+                            onClick = { viewModel.armAimFor(target.id) },
+                            enabled = armedFor != target.id,
+                        ) {
+                            Text(
+                                if (armedFor == target.id) {
+                                    "Snap now to add an aim…"
+                                } else {
+                                    "Teach another aim"
+                                },
+                            )
+                        }
                     }
                     OutlinedButton(onClick = { viewModel.removeTarget(target.id) }) { Text("Remove") }
                 }

@@ -29,11 +29,20 @@ data class Observation(
  */
 data class ResolverConfig(
     /**
-     * Heading tolerance. Tight, because heading is the reproducible half: a
-     * television sits on the same bearing from a room whether you are sitting
-     * or standing.
+     * Heading tolerance.
+     *
+     * 20 was chosen on the assumption that heading is the reproducible half -
+     * a television sits on the same bearing from a room whether you are
+     * sitting or standing. That is true of the television and false of the
+     * arm pointing at it: measured snaps at one television, from one seat,
+     * landed 16, 31 and 32 degrees off a single calibration.
+     *
+     * 30 is as far as this can go before targets stop being distinguishable;
+     * it allows roughly six directions around a room. The rest of the spread
+     * is for [Target.extraAims] to absorb, which costs no resolution at all
+     * because it widens one target rather than every target.
      */
-    val maxYawDegrees: Double = 20.0,
+    val maxYawDegrees: Double = 30.0,
     /**
      * Elevation tolerance. Deliberately much looser. Where you stand, how tall
      * you are and how far you tilt the phone all move elevation while heading
@@ -153,8 +162,18 @@ class TargetResolver(private val config: ResolverConfig = ResolverConfig()) {
     }
 
     private fun score(target: Target, observation: Observation): Candidate {
-        val angle = Bearing.angleBetween(observation.bearing, target.bearing)
-        val separation = separationBetween(observation.bearing, target.bearing)
+        // Against the closest recorded aim, not the first one. Each aim is a
+        // real attempt at pointing at this thing, so being near any of them is
+        // being in a pose that has meant this target before.
+        val best = target.aims.minBy { aim ->
+            val sep = separationBetween(observation.bearing, aim)
+            val y = sep.yawDegrees / config.maxYawDegrees
+            val p = sep.pitchDegrees / config.maxPitchDegrees
+            y * y + p * p
+        }
+
+        val angle = Bearing.angleBetween(observation.bearing, best)
+        val separation = separationBetween(observation.bearing, best)
 
         // An ellipse rather than a cone: wide in elevation, narrow in heading.
         // At 1.0 the aim is exactly on the boundary, whichever axis took it

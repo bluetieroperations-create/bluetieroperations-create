@@ -72,6 +72,22 @@ object SnapPointHandler {
         // A snap offered as calibration defines a target rather than firing
         // one, and must not do both: recording where the television is should
         // not also turn it on.
+        // Widening an existing target is handled here rather than on the
+        // calibration screen, because the phone is in a pocket while its owner
+        // stands across the room pointing at something.
+        if (WatchCapture.armed.value) {
+            val addToId = WatchCapture.takeArmedTarget()
+            if (addToId != null) {
+                WatchCapture.disarm()
+                if (TargetStore.registry.value.targets.isEmpty()) TargetStore.load(context)
+                val existing = TargetStore.registry.value.byId(addToId)
+                    ?: return outcome("That target is gone")
+                val widened = existing.copy(extraAims = existing.extraAims + point.bearing)
+                TargetStore.save(context, TargetStore.registry.value.with(widened))
+                return outcome("${existing.label}: ${widened.aims.size} aims")
+            }
+        }
+
         if (WatchCapture.offer(point.bearing)) {
             return outcome(
                 "Captured ${point.bearing.yawDegrees.roundToInt()}° / " +

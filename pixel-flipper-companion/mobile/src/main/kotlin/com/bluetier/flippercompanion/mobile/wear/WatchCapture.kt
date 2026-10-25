@@ -38,13 +38,40 @@ object WatchCapture {
     /** The most recent bearing a snap recorded, for the calibration screen. */
     val captured: StateFlow<Bearing?> = _captured.asStateFlow()
 
+    private val _armedForTargetId = MutableStateFlow<String?>(null)
+
+    /** Set when the next snap adds an aim to an existing target. */
+    val armedForTargetId: StateFlow<String?> = _armedForTargetId.asStateFlow()
+
     fun arm() {
         _captured.value = null
+        _armedForTargetId.value = null
         _armed.value = true
+    }
+
+    /**
+     * Arms a capture that widens [targetId] rather than defining something new.
+     *
+     * Pointing at one thing several times is how the spread of a real gesture
+     * gets recorded, so this is the path that makes a target reliable rather
+     * than merely registered.
+     */
+    fun armFor(targetId: String) {
+        _captured.value = null
+        _armedForTargetId.value = targetId
+        _armed.value = true
+    }
+
+    /** Takes the target this capture was armed for, clearing it. */
+    fun takeArmedTarget(): String? {
+        val id = _armedForTargetId.value
+        _armedForTargetId.value = null
+        return id
     }
 
     fun disarm() {
         _armed.value = false
+        _armedForTargetId.value = null
     }
 
     /**
