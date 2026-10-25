@@ -229,6 +229,9 @@ private fun AimCard(viewModel: MainViewModel, axis: PointingAxis, armed: Boolean
                 when (axis) {
                     PointingAxis.SCREEN_BACK -> "Aim the back of the phone at it"
                     PointingAxis.TOP_EDGE -> "Hold it flat, top edge towards it"
+                    // Offered on the watch rather than here, but the enum is
+                    // shared and a when over it has to be complete.
+                    PointingAxis.BOTTOM_EDGE -> "Hold it flat, bottom edge towards it"
                 },
                 style = MaterialTheme.typography.titleMedium,
             )

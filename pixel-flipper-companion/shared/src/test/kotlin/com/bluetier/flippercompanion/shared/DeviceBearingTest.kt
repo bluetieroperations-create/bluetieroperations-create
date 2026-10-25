@@ -76,6 +76,25 @@ class DeviceBearingTest {
     }
 
     @Test
+    fun `every pointing axis resolves to a bearing`() {
+        // Adding a PointingAxis value and forgetting a branch is a compile
+        // error where the `when` is exhaustive and a silent wrong answer where
+        // it is not. This pins the one that does the actual geometry.
+        PointingAxis.entries.forEach { axis ->
+            val bearing = DeviceBearing.fromRotationMatrix(identity, axis)
+            assertTrue("$axis produced no bearing", bearing != null)
+        }
+    }
+
+    @Test
+    fun `opposite edges point opposite ways`() {
+        val top = DeviceBearing.fromRotationMatrix(identity, PointingAxis.TOP_EDGE)!!
+        val bottom = DeviceBearing.fromRotationMatrix(identity, PointingAxis.BOTTOM_EDGE)!!
+
+        assertEquals(180.0, Bearing.angleBetween(top, bottom), 1e-6)
+    }
+
+    @Test
     fun `nonsense input yields no bearing`() {
         assertNull(DeviceBearing.fromRotationMatrix(doubleArrayOf(1.0, 2.0, 3.0)))
         assertNull(DeviceBearing.fromRotationMatrix(DoubleArray(9) { Double.NaN }))
