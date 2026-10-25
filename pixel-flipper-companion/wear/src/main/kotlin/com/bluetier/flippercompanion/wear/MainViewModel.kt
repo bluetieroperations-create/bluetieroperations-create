@@ -2,6 +2,7 @@ package com.bluetier.flippercompanion.wear
 
 import android.app.Application
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.bluetier.flippercompanion.shared.WearContract
@@ -57,7 +58,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             snapRemote.snaps.collect { point ->
                 WatchResultBridge.clear()
-                _remoteStatus.value = when (val result = connector.sendSnapPoint(point)) {
+                val sendResult = connector.sendSnapPoint(point)
+                Log.d(
+                    "FlipperSnap",
+                    "send result=$sendResult aim=%.1f/%.1f wobble=%.1f"
+                        .format(
+                            point.bearing.yawDegrees,
+                            point.bearing.pitchDegrees,
+                            point.aimSpreadDegrees,
+                        ),
+                )
+                _remoteStatus.value = when (val result = sendResult) {
                     SendResult.Delivered ->
                         "Sent ${point.bearing.yawDegrees.roundToInt()}°/" +
                             "${point.bearing.pitchDegrees.roundToInt()}°, " +

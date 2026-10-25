@@ -17,11 +17,11 @@ class WatchMessageListenerService : WearableListenerService() {
         if (event.path != WearContract.PATH_RESULT) return
 
         val text = String(event.data, Charsets.UTF_8)
-        Log.d(TAG, "Phone replied: $text")
+        Log.i(TAG, "reply $text")
         WatchResultBridge.post(text)
     }
 
     private companion object {
-        const val TAG = "WatchMsgListener"
+        const val TAG = "FlipperSnap"
     }
 }

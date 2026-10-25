@@ -1,6 +1,7 @@
 package com.bluetier.flippercompanion.wear.sensors
 
 import android.content.Context
+import android.util.Log
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -137,6 +138,11 @@ class SnapRemote(
 
         if (!event.accepted) {
             _state.value = _state.value.copy(snapsRejected = _state.value.snapsRejected + 1)
+            Log.d(
+                LOG_TAG,
+                "reject reasons=${event.rejections} peak=%.1f gyro=%.1f samples=%d"
+                    .format(event.peakDeviation, event.peakGyro, event.sampleCount),
+            )
             return
         }
 
@@ -145,6 +151,7 @@ class SnapRemote(
         // guess is worse than not firing.
         val aim = bearingRing.aimBefore(event.peakNanos)
         if (aim == null) {
+            Log.w(LOG_TAG, "accept but no aim recorded; ring holds ${bearingRing.size} samples")
             _state.value = _state.value.copy(
                 snapsDetected = _state.value.snapsDetected + 1,
                 lastSkipped = "no aim recorded",
@@ -155,6 +162,18 @@ class SnapRemote(
         _state.value = _state.value.copy(
             snapsDetected = _state.value.snapsDetected + 1,
             lastSkipped = null,
+        )
+
+        Log.d(
+            LOG_TAG,
+            "accept axis=$axis aim=%.1f/%.1f wobble=%.1f aimSamples=%d peak=%.1f"
+                .format(
+                    aim.bearing.yawDegrees,
+                    aim.bearing.pitchDegrees,
+                    aim.spreadDegrees,
+                    aim.sampleCount,
+                    event.peakDeviation,
+                ),
         )
 
         _snaps.tryEmit(
@@ -208,5 +227,12 @@ class SnapRemote(
 
     private companion object {
         const val UI_INTERVAL_MS = 100L
+
+        /**
+         * One tag for the whole gesture, so the entire path can be watched over
+         * adb with a single filter. Reading this off a watch face in a dark
+         * room is not a diagnostic method.
+         */
+        const val LOG_TAG = "FlipperSnap"
     }
 }
