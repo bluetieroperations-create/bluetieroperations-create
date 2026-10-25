@@ -55,6 +55,7 @@ fun CalibrateScreen(viewModel: MainViewModel, onBack: () -> Unit) {
     val resolution by viewModel.liveResolution.collectAsStateWithLifecycle()
     val axis by viewModel.pointingAxis.collectAsStateWithLifecycle()
     val dispatchStatus by viewModel.dispatchStatus.collectAsStateWithLifecycle()
+    val armed by viewModel.captureArmed.collectAsStateWithLifecycle()
 
     var label by remember { mutableStateOf("") }
     var action by remember { mutableStateOf("") }
@@ -133,7 +134,14 @@ fun CalibrateScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                 )
 
                 when (val state = hold) {
-                    HoldState.Moving -> Text("Hold still to capture", style = MaterialTheme.typography.bodySmall)
+                    HoldState.Moving -> Text(
+                        if (armed) {
+                            "Aim at it and hold still"
+                        } else {
+                            "Tap Capture below, then aim and hold"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                     is HoldState.Holding -> {
                         Text("Holding…", style = MaterialTheme.typography.bodySmall)
                         LinearProgressIndicator(
@@ -145,6 +153,22 @@ fun CalibrateScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                         "Captured ${state.bearing.yawDegrees.roundToInt()}° / " +
                             "${state.bearing.pitchDegrees.roundToInt()}° — name it below",
                         style = MaterialTheme.typography.titleSmall,
+                    )
+                }
+
+                // Capture is armed by hand, so putting the phone down to type a
+                // name cannot overwrite the bearing you just took.
+                Button(
+                    onClick = viewModel::armCapture,
+                    enabled = !armed,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        when {
+                            armed -> "Aiming…"
+                            hold is HoldState.Captured -> "Capture again"
+                            else -> "Capture bearing"
+                        },
                     )
                 }
 

@@ -105,6 +105,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _holdState = MutableStateFlow<HoldState>(HoldState.Moving)
     val holdState: StateFlow<HoldState> = _holdState.asStateFlow()
 
+    /**
+     * Whether a capture is being attempted.
+     *
+     * Capture has to be armed deliberately. Left always-on it fires on the
+     * first steady second, and the steadiest moment in the whole flow is
+     * holding the phone still while reading the screen - so it would record
+     * wherever the phone happened to rest, then refuse to budge because a
+     * capture is sticky until reset. Aiming afterwards changed nothing.
+     */
+    private val _captureArmed = MutableStateFlow(false)
+    val captureArmed: StateFlow<Boolean> = _captureArmed.asStateFlow()
+
+    /** Begins a capture: from here, holding steady records the bearing. */
+    fun armCapture() {
+        stability.reset()
+        _holdState.value = HoldState.Moving
+        _calibrationStatus.value = ""
+        _dispatchStatus.value = ""
+        _captureArmed.value = true
+    }
+
     private val _calibrationStatus = MutableStateFlow("")
     val calibrationStatus: StateFlow<String> = _calibrationStatus.asStateFlow()
 
@@ -287,8 +308,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // Drive point-and-hold from the live bearing while calibrating.
         viewModelScope.launch {
             bearingSampler.bearing.collect { bearing ->
-                if (bearing != null && _scanMode.value == ScanMode.CALIBRATE) {
-                    _holdState.value = stability.update(System.currentTimeMillis(), bearing)
+                if (bearing != null &&
+                    _scanMode.value == ScanMode.CALIBRATE &&
+                    _captureArmed.value
+                ) {
+                    val state = stability.update(System.currentTimeMillis(), bearing)
+                    _holdState.value = state
+                    // Disarm on capture so the next steady moment - putting the
+                    // phone down to type a name - cannot overwrite it.
+                    if (state is HoldState.Captured) _captureArmed.value = false
                 }
             }
         }
@@ -402,6 +430,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         stability.reset()
         _holdState.value = HoldState.Moving
         _calibrationStatus.value = ""
+        _captureArmed.value = false
         bearingSampler.start()
         _scanMode.value = ScanMode.CALIBRATE
     }
@@ -417,6 +446,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         stability.reset()
         _holdState.value = HoldState.Moving
         _calibrationStatus.value = ""
+        _captureArmed.value = false
     }
 
     /**
@@ -446,6 +476,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _calibrationStatus.value = if (saved) {
             stability.reset()
             _holdState.value = HoldState.Moving
+            _captureArmed.value = false
             buildString {
                 append("Saved ").append(target.label)
                 // Two targets closer together than the compass can separate
