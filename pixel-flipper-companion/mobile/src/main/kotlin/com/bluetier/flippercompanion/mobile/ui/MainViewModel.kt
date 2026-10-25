@@ -30,6 +30,7 @@ import com.bluetier.flippercompanion.mobile.target.BearingSampler
 import com.bluetier.flippercompanion.mobile.target.BearingStability
 import com.bluetier.flippercompanion.mobile.target.CompassTrust
 import com.bluetier.flippercompanion.mobile.target.HoldState
+import com.bluetier.flippercompanion.mobile.wear.WatchCapture
 import com.bluetier.flippercompanion.mobile.target.Observation
 import com.bluetier.flippercompanion.shared.PointingAxis
 import com.bluetier.flippercompanion.mobile.target.Resolution
@@ -130,12 +131,31 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Begins a capture: from here, holding steady records the bearing. */
     fun armCapture() {
+        WatchCapture.disarm()
         stability.reset()
         _holdState.value = HoldState.Moving
         _calibrationStatus.value = ""
         _dispatchStatus.value = ""
         _capturedBearingLabel.value = null
         _captureArmed.value = true
+    }
+
+    /**
+     * Waits for a snap to say where the target is, rather than reading it off
+     * this phone.
+     *
+     * The phone's own capture is disarmed first. Both armed at once would let
+     * whichever arrived first win, and the one that arrives first is the phone
+     * sitting still on a table while its owner walks off to point at something.
+     */
+    fun armWatchCapture() {
+        _captureArmed.value = false
+        stability.reset()
+        _holdState.value = HoldState.Moving
+        _dispatchStatus.value = ""
+        _capturedBearingLabel.value = null
+        _calibrationStatus.value = "Point your arm at it and snap"
+        WatchCapture.arm()
     }
 
     private val _calibrationStatus = MutableStateFlow("")
@@ -317,6 +337,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     init {
+        // A snap offered as calibration lands in the same slot the phone's own
+        // capture fills, so naming and saving work unchanged from here.
+        viewModelScope.launch {
+            WatchCapture.captured.collect { bearing ->
+                if (bearing != null) {
+                    _holdState.value = HoldState.Captured(bearing)
+                    _capturedBearingLabel.value =
+                        "${bearing.yawDegrees.roundToInt()}° / " +
+                            "${bearing.pitchDegrees.roundToInt()}°"
+                    _calibrationStatus.value = "Captured from the watch — name it below"
+                }
+            }
+        }
+
         // Drive point-and-hold from the live bearing while calibrating.
         viewModelScope.launch {
             bearingSampler.bearing.collect { bearing ->

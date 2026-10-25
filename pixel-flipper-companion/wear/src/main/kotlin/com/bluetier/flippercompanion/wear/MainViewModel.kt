@@ -1,6 +1,7 @@
 package com.bluetier.flippercompanion.wear
 
 import android.app.Application
+import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.bluetier.flippercompanion.shared.WearContract
@@ -25,7 +26,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val connector = PhoneConnector(app)
     private val scanner = WearBleScanner(app)
     private val snapLab = SnapLab(app)
-    private val snapRemote = SnapRemote(app)
+    private val axisStore = app.getSharedPreferences("snap-remote", Context.MODE_PRIVATE)
+    private val snapRemote = SnapRemote(app, initialAxis = loadAxis())
 
     val remoteState: StateFlow<SnapRemote.State> = snapRemote.state
 
@@ -135,14 +137,35 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * Cycles which way the watch counts as "pointing".
      *
      * Where a worn watch aims along the forearm depends on the wrist and the
-     * band, so it is picked by watching the live heading rather than assumed.
+     * band. It cannot be chosen by watching the live heading - turning the
+     * wrist to read the display is a different orientation from pointing, so
+     * the number being read describes the reading, not the aim.
+     *
+     * It does not have to be right in absolute terms. A target captured by
+     * snapping and a snap that fires it are measured through the same axis, so
+     * it cancels between them - provided it does not change in between, which
+     * is why the choice is remembered rather than reset to a default on every
+     * launch.
      */
     fun cyclePointingAxis() {
-        snapRemote.axis = when (snapRemote.axis) {
+        val next = when (snapRemote.axis) {
             PointingAxis.TOP_EDGE -> PointingAxis.BOTTOM_EDGE
             PointingAxis.BOTTOM_EDGE -> PointingAxis.SCREEN_BACK
             PointingAxis.SCREEN_BACK -> PointingAxis.TOP_EDGE
         }
+        snapRemote.axis = next
+        axisStore.edit().putString(KEY_AXIS, next.name).apply()
+    }
+
+    private fun loadAxis(): PointingAxis {
+        val stored = axisStore.getString(KEY_AXIS, null) ?: return PointingAxis.TOP_EDGE
+        // An unknown name means a stored value from an older build, not a bug
+        // worth taking the app down for.
+        return PointingAxis.entries.firstOrNull { it.name == stored } ?: PointingAxis.TOP_EDGE
+    }
+
+    private companion object {
+        const val KEY_AXIS = "pointing-axis"
     }
 
     override fun onCleared() {

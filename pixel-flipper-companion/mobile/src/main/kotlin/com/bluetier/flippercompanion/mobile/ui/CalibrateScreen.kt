@@ -33,6 +33,7 @@ import com.bluetier.flippercompanion.shared.PointingAxis
 import com.bluetier.flippercompanion.mobile.target.Resolution
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import com.bluetier.flippercompanion.mobile.wear.WatchCapture
 
 /**
  * Records where things are by pointing the phone at them.
@@ -222,6 +223,7 @@ private fun AimCard(viewModel: MainViewModel, axis: PointingAxis, armed: Boolean
     val bearing by viewModel.liveBearing.collectAsStateWithLifecycle()
     val trust by viewModel.compassTrust.collectAsStateWithLifecycle()
     val hold by viewModel.holdState.collectAsStateWithLifecycle()
+    val watchArmed by WatchCapture.armed.collectAsStateWithLifecycle()
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -273,6 +275,17 @@ private fun AimCard(viewModel: MainViewModel, axis: PointingAxis, armed: Boolean
                         else -> "Capture bearing"
                     },
                 )
+            }
+
+            // Calibrating from the wrist that will point: the axis and the
+            // compass then cancel between calibration and use, which neither
+            // does when the phone records the target.
+            OutlinedButton(
+                onClick = viewModel::armWatchCapture,
+                enabled = !watchArmed,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (watchArmed) "Waiting for a snap…" else "Capture from a watch snap")
             }
 
             if (!trust.usableForCalibration) {

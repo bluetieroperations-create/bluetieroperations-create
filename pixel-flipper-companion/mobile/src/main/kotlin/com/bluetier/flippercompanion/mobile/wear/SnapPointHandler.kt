@@ -68,6 +68,16 @@ object SnapPointHandler {
             return outcome("Arm was moving (${point.aimSpreadDegrees.roundToInt()}°) — ignored")
         }
 
+        // A snap offered as calibration defines a target rather than firing
+        // one, and must not do both: recording where the television is should
+        // not also turn it on.
+        if (WatchCapture.offer(point.bearing)) {
+            return outcome(
+                "Captured ${point.bearing.yawDegrees.roundToInt()}° / " +
+                    "${point.bearing.pitchDegrees.roundToInt()}°",
+            )
+        }
+
         // The registry may not have been loaded in this process yet: a snap can
         // arrive at a service started without the Activity ever running.
         if (TargetStore.registry.value.targets.isEmpty()) {
