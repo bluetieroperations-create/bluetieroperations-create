@@ -9,15 +9,20 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.bluetier.flippercompanion.mobile.nfc.NfcMessages
 import com.bluetier.flippercompanion.mobile.nfc.NfcReader
 import com.bluetier.flippercompanion.mobile.nfc.NfcWriteResult
 import com.bluetier.flippercompanion.mobile.ui.CompanionScreen
+import com.bluetier.flippercompanion.mobile.ui.FlipperTheme
 import com.bluetier.flippercompanion.mobile.ui.MainViewModel
 import kotlinx.coroutines.launch
 
@@ -64,19 +69,30 @@ class MainActivity : ComponentActivity() {
         // same on older devices as on Android 15+, where it is enforced.
         enableEdgeToEdge()
         setContent {
-            CompanionScreen(
-                viewModel = viewModel,
-                nfcSupported = nfcReader.isSupported,
-                nfcEnabled = nfcEnabled,
-                onToggleScan = ::onToggleScan,
-                onFind = { withScanPermission(viewModel::enterFinder) },
-                onSweep = { withScanPermission(viewModel::enterSweep) },
-                onProbe = viewModel::enterProbe,
-                onCalibrate = viewModel::enterCalibrate,
-                onArmTextWrite = { text -> nfcReader.armWrite(NfcMessages.text(text)) },
-                onArmUriWrite = { uri -> nfcReader.armWrite(NfcMessages.uri(uri)) },
-                onCancelNfcWrite = { nfcReader.disarmWrite() },
-            )
+            // Material 3 components default to a LIGHT colour scheme when no
+            // MaterialTheme is in scope, which against this Activity's dark
+            // window made text unreadable. Surface then paints the window in
+            // the scheme's own background, so the two cannot disagree again.
+            FlipperTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background,
+                ) {
+                    CompanionScreen(
+                        viewModel = viewModel,
+                        nfcSupported = nfcReader.isSupported,
+                        nfcEnabled = nfcEnabled,
+                        onToggleScan = ::onToggleScan,
+                        onFind = { withScanPermission(viewModel::enterFinder) },
+                        onSweep = { withScanPermission(viewModel::enterSweep) },
+                        onProbe = viewModel::enterProbe,
+                        onCalibrate = viewModel::enterCalibrate,
+                        onArmTextWrite = { text -> nfcReader.armWrite(NfcMessages.text(text)) },
+                        onArmUriWrite = { uri -> nfcReader.armWrite(NfcMessages.uri(uri)) },
+                        onCancelNfcWrite = { nfcReader.disarmWrite() },
+                    )
+                }
+            }
         }
     }
 

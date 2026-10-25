@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
@@ -65,8 +64,10 @@ fun CalibrateScreen(viewModel: MainViewModel, onBack: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            // safeDrawingPadding already accounts for the IME; adding
+            // imePadding on top applied the keyboard inset twice and pushed
+            // the field being typed into off the bottom of a scrolling screen.
             .safeDrawingPadding()
-            .imePadding()
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
