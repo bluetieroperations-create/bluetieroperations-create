@@ -38,8 +38,16 @@ data class TransientConfig(
     val enterThreshold: Double = 6.0,
     /** Deviation that closes it. Below [enterThreshold] to give hysteresis. */
     val exitThreshold: Double = 2.0,
-    /** A transient must peak at least this high to count. */
-    val minPeak: Double = 8.0,
+    /**
+     * A transient must peak at least this high to count.
+     *
+     * 8.0 came from a bench and was far too low in a room. Field logs caught
+     * it accepting transients peaking at 8.2, 9.2 and 10.7 - arm movements,
+     * each then carrying a direction nobody had aimed, which is worse than
+     * missing the snap entirely. A deliberate snap in the same session peaked
+     * at 42.0, and bench snaps ran to 62.8, so there is a wide gap to sit in.
+     */
+    val minPeak: Double = 15.0,
     /**
      * And no higher than this. Measured snaps reach 62.8 and claps start at
      * 74.1, so the bound sits in the gap between them.
@@ -53,7 +61,18 @@ data class TransientConfig(
     val minSampleCount: Int = 5,
     /** Longer than this is not a snap. */
     val maxDurationMs: Double = 60.0,
-    /** Peak angular rate above this means the wrist rotated, so not a snap. */
+    /**
+     * Peak angular rate above this means the wrist rotated, so not a snap.
+     *
+     * Stays at 6.0 despite field logs showing two rejections at 7.3 and 8.4
+     * that peaked near 50 and looked like snaps thrown away. The measured set
+     * says otherwise: every recorded snap stayed under 6.72 rad/s, and that
+     * figure is the *lowest* rotation among walking transients that reached
+     * snap-like peaks. A high peak with 7-8 rad/s of rotation is the signature
+     * of a footstep traveling up the body, not of a snap.
+     *
+     * Two unlabelled field samples do not outweigh fifty-five labelled ones.
+     */
     val maxGyro: Double = 6.0,
     /** Dead time after any transient, to avoid double-counting one snap. */
     val debounceMs: Double = 250.0,

@@ -127,7 +127,17 @@ class MeasuredWristTest {
     fun `the previous thresholds accepted claps - this is the regression`() {
         // Without an upper bound on peak, two of these claps were accepted as
         // snaps on a real wrist. Guards the reason maxPeak exists.
-        val old = TransientConfig(maxPeak = Double.MAX_VALUE, minSampleCount = 1)
+        //
+        // minPeak is pinned to the 8.0 of that era rather than inherited: this
+        // test reconstructs a past configuration, so letting it track today's
+        // defaults would quietly change what it claims to prove. Raising
+        // minPeak to 15.0 is exactly such a change - it now catches the knock
+        // on peak height alone, where before only the sample-count gate did.
+        val old = TransientConfig(
+            minPeak = 8.0,
+            maxPeak = Double.MAX_VALUE,
+            minSampleCount = 1,
+        )
 
         assertTrue(claps.count { rejections(it, old).isEmpty() } > 0)
         assertTrue(rejections(knock, old).isEmpty())
