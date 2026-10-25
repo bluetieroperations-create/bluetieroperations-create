@@ -117,12 +117,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _captureArmed = MutableStateFlow(false)
     val captureArmed: StateFlow<Boolean> = _captureArmed.asStateFlow()
 
+    /**
+     * Set once a bearing has been captured, cleared when it has not.
+     *
+     * Exists so the screen can tell whether a capture is held without watching
+     * [holdState], which changes many times a second. Anything read at the top
+     * of a composable must change slowly, or it recomposes everything below it
+     * — which is what stopped the text fields accepting input.
+     */
+    private val _capturedBearingLabel = MutableStateFlow<String?>(null)
+    val capturedBearingLabel: StateFlow<String?> = _capturedBearingLabel.asStateFlow()
+
     /** Begins a capture: from here, holding steady records the bearing. */
     fun armCapture() {
         stability.reset()
         _holdState.value = HoldState.Moving
         _calibrationStatus.value = ""
         _dispatchStatus.value = ""
+        _capturedBearingLabel.value = null
         _captureArmed.value = true
     }
 
@@ -316,7 +328,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     _holdState.value = state
                     // Disarm on capture so the next steady moment - putting the
                     // phone down to type a name - cannot overwrite it.
-                    if (state is HoldState.Captured) _captureArmed.value = false
+                    if (state is HoldState.Captured) {
+                        _captureArmed.value = false
+                        _capturedBearingLabel.value =
+                            "${state.bearing.yawDegrees.roundToInt()}° / " +
+                            "${state.bearing.pitchDegrees.roundToInt()}°"
+                    }
                 }
             }
         }
@@ -431,6 +448,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _holdState.value = HoldState.Moving
         _calibrationStatus.value = ""
         _captureArmed.value = false
+        _capturedBearingLabel.value = null
         bearingSampler.start()
         _scanMode.value = ScanMode.CALIBRATE
     }
@@ -447,6 +465,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _holdState.value = HoldState.Moving
         _calibrationStatus.value = ""
         _captureArmed.value = false
+        _capturedBearingLabel.value = null
     }
 
     /**
@@ -477,6 +496,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             stability.reset()
             _holdState.value = HoldState.Moving
             _captureArmed.value = false
+            _capturedBearingLabel.value = null
             buildString {
                 append("Saved ").append(target.label)
                 // Two targets closer together than the compass can separate

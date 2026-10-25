@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
@@ -26,10 +27,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.bluetier.flippercompanion.mobile.target.Candidate
 import com.bluetier.flippercompanion.mobile.target.CompassTrust
 import com.bluetier.flippercompanion.mobile.target.HoldState
 import com.bluetier.flippercompanion.mobile.target.PointingAxis
-import com.bluetier.flippercompanion.mobile.target.Candidate
 import com.bluetier.flippercompanion.mobile.target.Resolution
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -37,25 +38,25 @@ import kotlin.math.roundToInt
 /**
  * Records where things are by pointing the phone at them.
  *
- * Aim the phone like a TV remote, hold still, and the bearing is captured —
- * averaged over the hold rather than snatched from one instant, so hand tremor
- * and magnetic noise average out.
+ * A note on structure, because it is load-bearing rather than tidiness: the
+ * live bearing changes many times a second, and reading it at the top of this
+ * composable recomposed the entire screen at sensor rate. That was enough to
+ * stop the text fields below showing what was being typed into them — each
+ * keystroke's state update was racing a flood of sensor-driven recompositions.
  *
- * The live "pointing at" line underneath is the quickest way to check a
- * registry: walk around aiming at things and watch what it picks, instead of
- * snapping and guessing why the wrong lamp came on.
+ * So anything that changes at sensor rate is read *inside* its own small
+ * composable ([AimCard], [PointingAtCard]). Only those subtrees rebuild; the
+ * fields, buttons and list stay still.
  */
 @Composable
 fun CalibrateScreen(viewModel: MainViewModel, onBack: () -> Unit) {
-    val bearing by viewModel.liveBearing.collectAsStateWithLifecycle()
-    val trust by viewModel.compassTrust.collectAsStateWithLifecycle()
-    val hold by viewModel.holdState.collectAsStateWithLifecycle()
+    // Deliberately only slow-changing state at this level.
     val targets by viewModel.targets.collectAsStateWithLifecycle()
     val status by viewModel.calibrationStatus.collectAsStateWithLifecycle()
-    val resolution by viewModel.liveResolution.collectAsStateWithLifecycle()
-    val axis by viewModel.pointingAxis.collectAsStateWithLifecycle()
     val dispatchStatus by viewModel.dispatchStatus.collectAsStateWithLifecycle()
+    val axis by viewModel.pointingAxis.collectAsStateWithLifecycle()
     val armed by viewModel.captureArmed.collectAsStateWithLifecycle()
+    val captured by viewModel.capturedBearingLabel.collectAsStateWithLifecycle()
 
     var label by remember { mutableStateOf("") }
     var action by remember { mutableStateOf("") }
@@ -65,6 +66,7 @@ fun CalibrateScreen(viewModel: MainViewModel, onBack: () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .safeDrawingPadding()
+            .imePadding()
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -83,24 +85,6 @@ fun CalibrateScreen(viewModel: MainViewModel, onBack: () -> Unit) {
             return@Column
         }
 
-        // A bad magnetometer reports a confident heading that is simply wrong,
-        // so say so before a target is recorded against it.
-        if (!trust.usableForCalibration) {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Compass accuracy: $trust", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        "Wave the phone in a figure of eight for a few seconds. " +
-                            "Calibrating against an uncalibrated compass records the wrong direction.",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-            }
-        }
-
-        // Which way "pointing" means is the single easiest thing to get wrong,
-        // and getting it wrong leaves heading correct while elevation is tens
-        // of degrees out - a failure that looks like a broken compass.
         Text("How are you holding it?", style = MaterialTheme.typography.titleMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             AxisButton(
@@ -117,64 +101,7 @@ fun CalibrateScreen(viewModel: MainViewModel, onBack: () -> Unit) {
             )
         }
 
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    when (axis) {
-                        PointingAxis.SCREEN_BACK -> "Aim the back of the phone at it"
-                        PointingAxis.TOP_EDGE -> "Hold it flat, top edge towards it"
-                    },
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(
-                    bearing?.let {
-                        "heading ${it.yawDegrees.roundToInt()}°   elevation ${it.pitchDegrees.roundToInt()}°"
-                    } ?: "waiting for the compass…",
-                    fontFamily = FontFamily.Monospace,
-                )
-
-                when (val state = hold) {
-                    HoldState.Moving -> Text(
-                        if (armed) {
-                            "Aim at it and hold still"
-                        } else {
-                            "Tap Capture below, then aim and hold"
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    is HoldState.Holding -> {
-                        Text("Holding…", style = MaterialTheme.typography.bodySmall)
-                        LinearProgressIndicator(
-                            progress = { state.progress.toFloat() },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                    is HoldState.Captured -> Text(
-                        "Captured ${state.bearing.yawDegrees.roundToInt()}° / " +
-                            "${state.bearing.pitchDegrees.roundToInt()}° — name it below",
-                        style = MaterialTheme.typography.titleSmall,
-                    )
-                }
-
-                // Capture is armed by hand, so putting the phone down to type a
-                // name cannot overwrite the bearing you just took.
-                Button(
-                    onClick = viewModel::armCapture,
-                    enabled = !armed,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        when {
-                            armed -> "Aiming…"
-                            hold is HoldState.Captured -> "Capture again"
-                            else -> "Capture bearing"
-                        },
-                    )
-                }
-
-                Text("compass accuracy: $trust", style = MaterialTheme.typography.bodySmall)
-            }
-        }
+        AimCard(viewModel = viewModel, axis = axis, armed = armed)
 
         OutlinedTextField(
             value = label,
@@ -186,7 +113,7 @@ fun CalibrateScreen(viewModel: MainViewModel, onBack: () -> Unit) {
         OutlinedTextField(
             value = action,
             onValueChange = { action = it },
-            label = { Text("Action (e.g. media_player.living_room_tv)") },
+            label = { Text("Action (e.g. http://192.168.0.18:8080/wake)") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -198,6 +125,15 @@ fun CalibrateScreen(viewModel: MainViewModel, onBack: () -> Unit) {
             modifier = Modifier.fillMaxWidth(),
         )
 
+        // Visibly unavailable, with the reason, rather than declining silently
+        // once pressed. A control that does nothing when tapped is the worst of
+        // the three states it could be in.
+        val missing = buildList {
+            if (captured == null) add("a captured bearing")
+            if (label.isBlank()) add("a name")
+            if (action.isBlank()) add("an action")
+        }
+
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = {
@@ -207,6 +143,7 @@ fun CalibrateScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                         bleAddress = ""
                     }
                 },
+                enabled = missing.isEmpty(),
                 modifier = Modifier.weight(1f),
             ) { Text("Save target") }
 
@@ -215,27 +152,30 @@ fun CalibrateScreen(viewModel: MainViewModel, onBack: () -> Unit) {
             }
         }
 
-        if (status.isNotEmpty()) {
-            Text(status, style = MaterialTheme.typography.bodySmall)
-        }
-
-        Text("Pointing at", style = MaterialTheme.typography.titleMedium)
-        Card(modifier = Modifier.fillMaxWidth()) {
+        if (missing.isNotEmpty()) {
             Text(
-                describe(resolution),
-                modifier = Modifier.padding(12.dp),
+                "Still needs ${missing.joinToString(", ")}",
+                style = MaterialTheme.typography.bodyMedium,
             )
         }
 
-        // Stands in for the snap until the watch can supply a bearing, and
-        // stays useful after: a target can be tested from where you are rather
-        // than from where it was calibrated.
+        if (status.isNotEmpty()) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Text(status, modifier = Modifier.padding(12.dp))
+            }
+        }
+
+        Text("Pointing at", style = MaterialTheme.typography.titleMedium)
+        PointingAtCard(viewModel)
+
         Button(onClick = viewModel::fireAtPointed, modifier = Modifier.fillMaxWidth()) {
             Text("Fire now")
         }
 
         if (dispatchStatus.isNotEmpty()) {
-            Text(dispatchStatus, style = MaterialTheme.typography.bodySmall)
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Text(dispatchStatus, modifier = Modifier.padding(12.dp))
+            }
         }
 
         Text("Registered (${targets.size})", style = MaterialTheme.typography.titleMedium)
@@ -271,7 +211,88 @@ fun CalibrateScreen(viewModel: MainViewModel, onBack: () -> Unit) {
     }
 }
 
-/** Puts the resolver's verdict, including its refusals, into a readable line. */
+/**
+ * The live aim readout. Reads the bearing and hold state itself, so that their
+ * many-times-a-second changes recompose this card alone.
+ */
+@Composable
+private fun AimCard(viewModel: MainViewModel, axis: PointingAxis, armed: Boolean) {
+    val bearing by viewModel.liveBearing.collectAsStateWithLifecycle()
+    val trust by viewModel.compassTrust.collectAsStateWithLifecycle()
+    val hold by viewModel.holdState.collectAsStateWithLifecycle()
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                when (axis) {
+                    PointingAxis.SCREEN_BACK -> "Aim the back of the phone at it"
+                    PointingAxis.TOP_EDGE -> "Hold it flat, top edge towards it"
+                },
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                bearing?.let {
+                    "heading ${it.yawDegrees.roundToInt()}°   elevation ${it.pitchDegrees.roundToInt()}°"
+                } ?: "waiting for the compass…",
+                fontFamily = FontFamily.Monospace,
+            )
+
+            when (val state = hold) {
+                HoldState.Moving -> Text(
+                    if (armed) "Aim at it and hold still" else "Tap Capture below, then aim and hold",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                is HoldState.Holding -> {
+                    Text("Holding…", style = MaterialTheme.typography.bodySmall)
+                    LinearProgressIndicator(
+                        progress = { state.progress.toFloat() },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                is HoldState.Captured -> Text(
+                    "Captured ${state.bearing.yawDegrees.roundToInt()}° / " +
+                        "${state.bearing.pitchDegrees.roundToInt()}° — name it below",
+                    style = MaterialTheme.typography.titleSmall,
+                )
+            }
+
+            Button(
+                onClick = viewModel::armCapture,
+                enabled = !armed,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    when {
+                        armed -> "Aiming…"
+                        hold is HoldState.Captured -> "Capture again"
+                        else -> "Capture bearing"
+                    },
+                )
+            }
+
+            if (!trust.usableForCalibration) {
+                Text(
+                    "Compass accuracy: $trust — wave the phone in a figure of eight. " +
+                        "Calibrating against an uncalibrated compass records the wrong direction.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            } else {
+                Text("compass accuracy: $trust", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+/** Live resolver verdict. Isolated for the same reason as [AimCard]. */
+@Composable
+private fun PointingAtCard(viewModel: MainViewModel) {
+    val resolution by viewModel.liveResolution.collectAsStateWithLifecycle()
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Text(describe(resolution), modifier = Modifier.padding(12.dp))
+    }
+}
+
 private fun describe(resolution: Resolution?): String = when (resolution) {
     null -> "waiting…"
     Resolution.EmptyRegistry -> "nothing calibrated yet"

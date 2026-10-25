@@ -84,6 +84,16 @@ class BearingSampler(
     private val matrix = FloatArray(9)
     private val asDoubles = DoubleArray(9)
 
+    /**
+     * Emissions are rate-limited to roughly 16 a second.
+     *
+     * Nobody can read a heading changing 50 times a second, and every emission
+     * recomposes whatever is watching. Publishing at sensor rate made the
+     * calibration screen rebuild constantly, which was enough to stop its text
+     * fields showing what was being typed into them.
+     */
+    private var lastEmitMillis = 0L
+
     private val listener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
             // Some devices report a rotation vector of an unexpected length;
@@ -94,7 +104,12 @@ class BearingSampler(
                 DeviceBearing.fromRotationMatrix(asDoubles, axis)
             }.getOrNull()
 
-            if (converted != null) _bearing.value = converted
+            if (converted == null) return
+
+            val now = System.currentTimeMillis()
+            if (now - lastEmitMillis < MIN_EMIT_INTERVAL_MS) return
+            lastEmitMillis = now
+            _bearing.value = converted
         }
 
         override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
@@ -113,5 +128,10 @@ class BearingSampler(
         if (!_running.value) return
         sensorManager.unregisterListener(listener)
         _running.value = false
+    }
+
+    private companion object {
+        /** About 16 Hz: smooth to the eye, far below what recomposition hurts at. */
+        const val MIN_EMIT_INTERVAL_MS = 60L
     }
 }
