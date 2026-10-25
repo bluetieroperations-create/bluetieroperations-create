@@ -125,9 +125,11 @@ fun CalibrateScreen(viewModel: MainViewModel, onBack: () -> Unit) {
             modifier = Modifier.fillMaxWidth(),
         )
 
-        // Visibly unavailable, with the reason, rather than declining silently
-        // once pressed. A control that does nothing when tapped is the worst of
-        // the three states it could be in.
+        // The reason is stated *before* the button is pressed, which is the
+        // part that was actually missing. Disabling it as well backfired: a
+        // disabled filled button renders near-black on a dark theme and simply
+        // vanishes, which reads as the app having lost a control rather than
+        // as a form waiting to be filled in.
         val missing = buildList {
             if (captured == null) add("a captured bearing")
             if (label.isBlank()) add("a name")
@@ -143,7 +145,6 @@ fun CalibrateScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                         bleAddress = ""
                     }
                 },
-                enabled = missing.isEmpty(),
                 modifier = Modifier.weight(1f),
             ) { Text("Save target") }
 
