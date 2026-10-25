@@ -13,6 +13,7 @@ import com.bluetier.flippercompanion.shared.SnapPoint
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -89,12 +90,29 @@ object SnapPointHandler {
             Observation(point.bearing, visibleRssi),
         )
 
+        // A miss is only useful if it says by how much. "Not pointing at a
+        // target" sent nobody anywhere: the aim, the nearest target and the gap
+        // between them are what turn a dead end into a measurement.
+        val aim = "${point.bearing.yawDegrees.roundToInt()}°/" +
+            "${point.bearing.pitchDegrees.roundToInt()}°"
+
         val target = when (resolution) {
             is Resolution.Resolved -> resolution.candidate.target
             is Resolution.Ambiguous -> return outcome(
                 "Ambiguous: ${resolution.first.target.label} or ${resolution.second.target.label}",
             )
-            is Resolution.NoMatch -> return outcome("Not pointing at a target")
+            is Resolution.NoMatch -> {
+                val nearest = resolution.nearest
+                return outcome(
+                    if (nearest == null) {
+                        "Aimed $aim — nothing near it"
+                    } else {
+                        "Aimed $aim — ${nearest.target.label} is " +
+                            "${abs(nearest.separation.yawDegrees).roundToInt()}° heading, " +
+                            "${abs(nearest.separation.pitchDegrees).roundToInt()}° elevation away"
+                    },
+                )
+            }
             Resolution.EmptyRegistry -> return outcome("No targets calibrated")
         }
 

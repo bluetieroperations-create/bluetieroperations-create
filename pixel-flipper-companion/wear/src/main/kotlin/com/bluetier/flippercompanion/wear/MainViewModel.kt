@@ -59,7 +59,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 WatchResultBridge.clear()
                 _remoteStatus.value = when (val result = connector.sendSnapPoint(point)) {
                     SendResult.Delivered ->
-                        "Snap sent, wobble ${point.aimSpreadDegrees.roundToInt()}°"
+                        "Sent ${point.bearing.yawDegrees.roundToInt()}°/" +
+                            "${point.bearing.pitchDegrees.roundToInt()}°, " +
+                            "wobble ${point.aimSpreadDegrees.roundToInt()}°"
                     SendResult.NoPhoneConnected -> "No phone connected"
                     is SendResult.Failed -> "Send failed: ${result.error.message}"
                 }
