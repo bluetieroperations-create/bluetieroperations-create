@@ -1,4 +1,4 @@
-package com.bluetier.flippercompanion.mobile.target
+package com.bluetier.flippercompanion.shared
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull

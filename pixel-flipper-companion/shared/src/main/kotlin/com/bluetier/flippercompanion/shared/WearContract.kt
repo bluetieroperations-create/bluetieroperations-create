@@ -32,6 +32,16 @@ object WearContract {
     const val PATH_SNAP_TRACE = "/flipper/snap-trace"
 
     /**
+     * MessageClient path: watch -> phone, "I snapped, aimed this way".
+     *
+     * Payload is encoded by [SnapPointPayload]. Separate from [PATH_TRIGGER]
+     * because a trigger names an action while this names a *direction* - the
+     * phone decides what it meant, from a registry the watch knows nothing
+     * about.
+     */
+    const val PATH_SNAP_POINT = "/flipper/snap-point"
+
+    /**
      * Actions the watch can request of the phone. Sent as the UTF-8 message
      * payload on [PATH_TRIGGER]. Kept as plain strings so the payload stays a
      * trivial, versionable contract (no shared serialization dependency).

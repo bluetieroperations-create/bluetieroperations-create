@@ -29,7 +29,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bluetier.flippercompanion.mobile.target.Candidate
 import com.bluetier.flippercompanion.mobile.target.CompassTrust
 import com.bluetier.flippercompanion.mobile.target.HoldState
-import com.bluetier.flippercompanion.mobile.target.PointingAxis
+import com.bluetier.flippercompanion.shared.PointingAxis
 import com.bluetier.flippercompanion.mobile.target.Resolution
 import kotlin.math.abs
 import kotlin.math.roundToInt

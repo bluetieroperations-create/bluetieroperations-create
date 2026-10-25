@@ -1,7 +1,11 @@
 package com.bluetier.flippercompanion.wear.phone
 
 import android.content.Context
+import com.bluetier.flippercompanion.shared.SnapPoint
+import com.bluetier.flippercompanion.shared.SnapPointPayload
 import com.bluetier.flippercompanion.shared.SnapTrace
+import com.bluetier.flippercompanion.shared.SnapPoint
+import com.bluetier.flippercompanion.shared.SnapPointPayload
 import com.bluetier.flippercompanion.shared.SnapTracePayload
 import com.bluetier.flippercompanion.shared.WearContract
 import com.google.android.gms.wearable.CapabilityClient
@@ -52,6 +56,25 @@ class PhoneConnector(context: Context) {
                 nodeId,
                 WearContract.PATH_SNAP_TRACE,
                 SnapTracePayload.encode(trace),
+            ).await()
+            SendResult.Delivered
+        }.getOrElse { SendResult.Failed(it) }
+    }
+
+    /**
+     * Sends a snap and the direction the arm was aimed in.
+     *
+     * The message the whole gesture exists for. Nothing about targets travels
+     * with it: the phone holds the registry and decides what the direction
+     * meant.
+     */
+    suspend fun sendSnapPoint(point: SnapPoint): SendResult {
+        val nodeId = bestPhoneNodeId() ?: return SendResult.NoPhoneConnected
+        return runCatching {
+            messageClient.sendMessage(
+                nodeId,
+                WearContract.PATH_SNAP_POINT,
+                SnapPointPayload.encode(point),
             ).await()
             SendResult.Delivered
         }.getOrElse { SendResult.Failed(it) }

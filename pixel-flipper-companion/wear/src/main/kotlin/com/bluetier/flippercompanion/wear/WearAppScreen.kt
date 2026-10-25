@@ -31,6 +31,9 @@ fun WearAppScreen(viewModel: MainViewModel) {
     val devices by viewModel.devices.collectAsStateWithLifecycle()
     val snap by viewModel.snapState.collectAsStateWithLifecycle()
     val tracesSent by viewModel.tracesSent.collectAsStateWithLifecycle()
+    val remote by viewModel.remoteState.collectAsStateWithLifecycle()
+    val remoteStatus by viewModel.remoteStatus.collectAsStateWithLifecycle()
+    val lastResult by viewModel.lastResult.collectAsStateWithLifecycle()
 
     ScalingLazyColumn(modifier = Modifier.fillMaxWidth()) {
         item { ListHeader { Text("Flipper Remote") } }
@@ -62,6 +65,54 @@ fun WearAppScreen(viewModel: MainViewModel) {
                 colors = ChipDefaults.secondaryChipColors(),
                 modifier = Modifier.fillMaxWidth(),
             )
+        }
+
+        // The gesture itself: snap with the pointing hand and the watch sends
+        // the direction; the phone decides what it meant and answers back.
+        item { ListHeader { Text("Snap remote") } }
+
+        item {
+            Chip(
+                label = { Text(if (remote.running) "Stop remote" else "Start remote") },
+                onClick = { viewModel.toggleSnapRemote() },
+                colors = if (remote.running) {
+                    ChipDefaults.secondaryChipColors()
+                } else {
+                    ChipDefaults.primaryChipColors()
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = remote.sensorsAvailable,
+            )
+        }
+
+        if (!remote.sensorsAvailable) {
+            item { CenteredText("This watch is missing a sensor the remote needs") }
+        } else if (remote.running) {
+            item {
+                CenteredText(
+                    remote.bearing?.let {
+                        "aim ${it.yawDegrees.roundToInt()}° / ${it.pitchDegrees.roundToInt()}°"
+                    } ?: "waiting for the compass…",
+                )
+            }
+            item {
+                // Which way the watch counts as pointing depends on the wrist
+                // and the band, so it is chosen by watching the number above.
+                Chip(
+                    label = { Text("Aim axis: ${remote.axis.name}") },
+                    onClick = { viewModel.cyclePointingAxis() },
+                    colors = ChipDefaults.secondaryChipColors(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            item {
+                CenteredText("snaps ${remote.snapsDetected}  rejected ${remote.snapsRejected}")
+            }
+            remote.lastSkipped?.let { item { CenteredText("skipped: $it") } }
+            if (remoteStatus.isNotEmpty()) item { CenteredText(remoteStatus) }
+            // The phone's verdict. Without it a missed gesture, a failed
+            // resolve and a dead relay all look identical from the wrist.
+            lastResult?.let { item { ListHeader { Text(it) } } }
         }
 
         // Snap lab: the sample-rate spike. The headline number is the achieved

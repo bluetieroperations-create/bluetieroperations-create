@@ -1,5 +1,8 @@
 package com.bluetier.flippercompanion.mobile.target
 
+import com.bluetier.flippercompanion.shared.Bearing
+import com.bluetier.flippercompanion.shared.DeviceBearing
+import com.bluetier.flippercompanion.shared.PointingAxis
 import android.content.Context
 import android.hardware.Sensor
 import android.hardware.SensorEvent

@@ -1,5 +1,6 @@
 package com.bluetier.flippercompanion.mobile.target
 
+import com.bluetier.flippercompanion.shared.Bearing
 /** A decoded registry, plus how much of the file could not be read. */
 data class DecodeResult(
     val registry: TargetRegistry,

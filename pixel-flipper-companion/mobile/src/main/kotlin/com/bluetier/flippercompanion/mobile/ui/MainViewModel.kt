@@ -25,13 +25,13 @@ import com.bluetier.flippercompanion.mobile.dispatch.ActionParser
 import com.bluetier.flippercompanion.mobile.dispatch.DispatchResult
 import com.bluetier.flippercompanion.mobile.dispatch.Dispatcher
 import com.bluetier.flippercompanion.mobile.snap.SnapTraceStore
-import com.bluetier.flippercompanion.mobile.target.Bearing
+import com.bluetier.flippercompanion.shared.Bearing
 import com.bluetier.flippercompanion.mobile.target.BearingSampler
 import com.bluetier.flippercompanion.mobile.target.BearingStability
 import com.bluetier.flippercompanion.mobile.target.CompassTrust
 import com.bluetier.flippercompanion.mobile.target.HoldState
 import com.bluetier.flippercompanion.mobile.target.Observation
-import com.bluetier.flippercompanion.mobile.target.PointingAxis
+import com.bluetier.flippercompanion.shared.PointingAxis
 import com.bluetier.flippercompanion.mobile.target.Resolution
 import com.bluetier.flippercompanion.mobile.target.Target
 import com.bluetier.flippercompanion.mobile.target.TargetRegistry

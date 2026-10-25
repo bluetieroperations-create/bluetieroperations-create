@@ -1,5 +1,6 @@
 package com.bluetier.flippercompanion.mobile.target
 
+import com.bluetier.flippercompanion.shared.Bearing
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue

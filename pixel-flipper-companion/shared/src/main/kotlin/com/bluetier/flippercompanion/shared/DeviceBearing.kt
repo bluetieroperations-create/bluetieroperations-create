@@ -1,7 +1,8 @@
-package com.bluetier.flippercompanion.mobile.target
+package com.bluetier.flippercompanion.shared
 
 import kotlin.math.asin
 import kotlin.math.atan2
+import kotlin.math.sqrt
 
 /**
  * Which way a device is "pointing", which depends entirely on how it is held.
@@ -21,6 +22,16 @@ enum class PointingAxis {
      * along device -Z, the direction the rear camera looks.
      */
     SCREEN_BACK,
+
+    /**
+     * Device -Y, out of the bottom edge.
+     *
+     * Added for the watch. Which way a worn watch points along the forearm
+     * depends on which wrist it is on and how the band is oriented, and it is
+     * as likely to be this as [TOP_EDGE]. Rather than guess, both are offered
+     * and the live readout settles it.
+     */
+    BOTTOM_EDGE,
 }
 
 /**
@@ -63,6 +74,12 @@ object DeviceBearing {
                 -rotationMatrix[2],
                 -rotationMatrix[5],
                 -rotationMatrix[8],
+            )
+            // device -Y is the negated column 1
+            PointingAxis.BOTTOM_EDGE -> Triple(
+                -rotationMatrix[1],
+                -rotationMatrix[4],
+                -rotationMatrix[7],
             )
         }
 

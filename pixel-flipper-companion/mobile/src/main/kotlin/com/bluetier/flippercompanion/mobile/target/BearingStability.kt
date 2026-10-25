@@ -1,5 +1,8 @@
 package com.bluetier.flippercompanion.mobile.target
 
+import com.bluetier.flippercompanion.shared.Bearing
+import com.bluetier.flippercompanion.shared.DeviceBearing
+import com.bluetier.flippercompanion.shared.isWithin
 /** Where a point-and-hold has got to. */
 sealed interface HoldState {
     /** Not steady enough; the hold has not started or has been broken. */

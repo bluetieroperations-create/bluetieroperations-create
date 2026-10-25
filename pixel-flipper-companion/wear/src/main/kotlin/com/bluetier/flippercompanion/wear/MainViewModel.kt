@@ -7,7 +7,10 @@ import com.bluetier.flippercompanion.shared.WearContract
 import com.bluetier.flippercompanion.wear.ble.WearBleScanner
 import com.bluetier.flippercompanion.wear.phone.PhoneConnector
 import com.bluetier.flippercompanion.wear.phone.SendResult
+import com.bluetier.flippercompanion.shared.PointingAxis
+import com.bluetier.flippercompanion.wear.phone.WatchResultBridge
 import com.bluetier.flippercompanion.wear.sensors.SnapLab
+import com.bluetier.flippercompanion.wear.sensors.SnapRemote
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -21,6 +24,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val connector = PhoneConnector(app)
     private val scanner = WearBleScanner(app)
     private val snapLab = SnapLab(app)
+    private val snapRemote = SnapRemote(app)
+
+    val remoteState: StateFlow<SnapRemote.State> = snapRemote.state
+
+    /** What the phone made of the last snap. */
+    val lastResult: StateFlow<String?> = WatchResultBridge.lastResult
+
+    private val _remoteStatus = MutableStateFlow("")
+    val remoteStatus: StateFlow<String> = _remoteStatus.asStateFlow()
 
     val snapState: StateFlow<SnapLab.State> = snapLab.state
 
@@ -34,6 +46,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             snapLab.traces.collect { trace ->
                 if (connector.sendSnapTrace(trace) is SendResult.Delivered) {
                     _tracesSent.value += 1
+                }
+            }
+        }
+
+        // Accepted snaps, with the aim attached, go to the phone to resolve.
+        viewModelScope.launch {
+            snapRemote.snaps.collect { point ->
+                WatchResultBridge.clear()
+                _remoteStatus.value = when (val result = connector.sendSnapPoint(point)) {
+                    SendResult.Delivered -> "Snap sent…"
+                    SendResult.NoPhoneConnected -> "No phone connected"
+                    is SendResult.Failed -> "Send failed: ${result.error.message}"
                 }
             }
         }
@@ -87,9 +111,42 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Starts or stops the snap remote: from here, snapping fires whatever the
+     * arm is pointing at.
+     */
+    fun toggleSnapRemote() {
+        if (snapRemote.state.value.running) {
+            snapRemote.stop()
+            _remoteStatus.value = ""
+        } else {
+            // The lab and the remote both drive the IMU flat out and both own a
+            // detector; running them together would double-count every snap.
+            snapLab.stop()
+            WatchResultBridge.clear()
+            _remoteStatus.value = ""
+            snapRemote.start()
+        }
+    }
+
+    /**
+     * Cycles which way the watch counts as "pointing".
+     *
+     * Where a worn watch aims along the forearm depends on the wrist and the
+     * band, so it is picked by watching the live heading rather than assumed.
+     */
+    fun cyclePointingAxis() {
+        snapRemote.axis = when (snapRemote.axis) {
+            PointingAxis.TOP_EDGE -> PointingAxis.BOTTOM_EDGE
+            PointingAxis.BOTTOM_EDGE -> PointingAxis.SCREEN_BACK
+            PointingAxis.SCREEN_BACK -> PointingAxis.TOP_EDGE
+        }
+    }
+
     override fun onCleared() {
         scanner.stop()
         snapLab.stop()
+        snapRemote.stop()
         super.onCleared()
     }
 }

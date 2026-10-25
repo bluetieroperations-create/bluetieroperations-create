@@ -1,5 +1,8 @@
 package com.bluetier.flippercompanion.mobile.target
 
+import com.bluetier.flippercompanion.shared.Bearing
+import com.bluetier.flippercompanion.shared.Separation
+import com.bluetier.flippercompanion.shared.separationBetween
 import kotlin.math.sqrt
 
 /**
