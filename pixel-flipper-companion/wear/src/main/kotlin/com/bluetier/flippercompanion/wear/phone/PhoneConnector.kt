@@ -4,8 +4,6 @@ import android.content.Context
 import com.bluetier.flippercompanion.shared.SnapPoint
 import com.bluetier.flippercompanion.shared.SnapPointPayload
 import com.bluetier.flippercompanion.shared.SnapTrace
-import com.bluetier.flippercompanion.shared.SnapPoint
-import com.bluetier.flippercompanion.shared.SnapPointPayload
 import com.bluetier.flippercompanion.shared.SnapTracePayload
 import com.bluetier.flippercompanion.shared.WearContract
 import com.google.android.gms.wearable.CapabilityClient
