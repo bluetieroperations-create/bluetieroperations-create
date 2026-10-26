@@ -570,23 +570,45 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * [calibrationStatus], when there is nothing captured or the write fails.
      */
     fun saveCapturedTarget(label: String, action: String, bleAddress: String?): Boolean {
-        val captured = (_holdState.value as? HoldState.Captured)?.bearing
-        if (captured == null) {
-            _calibrationStatus.value = "Point at it and hold still first"
-            return false
-        }
         if (label.isBlank() || action.isBlank()) {
             _calibrationStatus.value = "A target needs a name and an action"
             return false
         }
 
-        val target = Target(
-            id = label.lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_').ifBlank { "target" },
-            label = label.trim(),
-            bearing = captured,
-            action = action.trim(),
-            bleAddress = bleAddress?.takeIf { it.isNotBlank() },
-        )
+        val id = label.lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_').ifBlank { "target" }
+        val existing = TargetStore.registry.value.byId(id)
+        val captured = (_holdState.value as? HoldState.Captured)?.bearing
+
+        if (captured == null && existing == null) {
+            _calibrationStatus.value = "Point at it and hold still first"
+            return false
+        }
+
+        // Saving over a target that already exists must not throw away the aims
+        // taught to it. Every one of them is a real recorded way of pointing at
+        // this thing, they take a snap each to collect, and losing them silently
+        // would leave the thing working worse with nothing to say why.
+        //
+        // With no new capture this is simply an edit - changing an action, which
+        // otherwise meant deleting the target and teaching it all over again.
+        val target = if (captured == null) {
+            existing!!.copy(
+                action = action.trim(),
+                bleAddress = bleAddress?.takeIf { it.isNotBlank() } ?: existing.bleAddress,
+            )
+        } else {
+            Target(
+                id = id,
+                label = label.trim(),
+                bearing = captured,
+                // The previous aims keep their place behind the new one: a
+                // re-capture adds a way of pointing rather than replacing every
+                // way already known.
+                extraAims = existing?.aims.orEmpty(),
+                action = action.trim(),
+                bleAddress = bleAddress?.takeIf { it.isNotBlank() },
+            )
+        }
 
         val saved = TargetStore.add(getApplication<Application>(), target)
         _calibrationStatus.value = if (saved) {
@@ -595,7 +617,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _captureArmed.value = false
             _capturedBearingLabel.value = null
             buildString {
-                append("Saved ").append(target.label)
+                append(if (captured == null) "Updated " else "Saved ").append(target.label)
+                if (target.extraAims.isNotEmpty()) {
+                    append(" (").append(target.aims.size).append(" aims)")
+                }
                 // Two targets closer together than the compass can separate
                 // will never resolve reliably, so say so at the point of
                 // creating the problem rather than leaving it to be found.
