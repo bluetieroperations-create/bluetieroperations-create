@@ -53,11 +53,16 @@ fun CalibrateScreen(
     viewModel: MainViewModel,
     onBack: () -> Unit,
     onArmUriWrite: (String) -> Unit = {},
+    onCancelNfcWrite: () -> Unit = {},
+    nfcSupported: Boolean = true,
+    nfcEnabled: Boolean = true,
 ) {
     // Deliberately only slow-changing state at this level.
     val targets by viewModel.targets.collectAsStateWithLifecycle()
     val status by viewModel.calibrationStatus.collectAsStateWithLifecycle()
     val tagStatus by viewModel.tagStatus.collectAsStateWithLifecycle()
+    val nfcArmed by viewModel.nfcArmed.collectAsStateWithLifecycle()
+    val nfcWriteStatus by viewModel.nfcWriteStatus.collectAsStateWithLifecycle()
     val dispatchStatus by viewModel.dispatchStatus.collectAsStateWithLifecycle()
     val axis by viewModel.pointingAxis.collectAsStateWithLifecycle()
     val armed by viewModel.captureArmed.collectAsStateWithLifecycle()
@@ -177,6 +182,37 @@ fun CalibrateScreen(
             Card(modifier = Modifier.fillMaxWidth()) {
                 Text(tagStatus, modifier = Modifier.padding(12.dp))
             }
+        }
+
+        // Writing a tag is a two-part gesture - arm here, then touch the tag -
+        // and the waiting half is invisible without this. A button that looks
+        // like it did nothing is the thing this project keeps relearning.
+        if (nfcArmed) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Hold the back of the phone against the tag…")
+                    OutlinedButton(onClick = onCancelNfcWrite) { Text("Cancel") }
+                }
+            }
+        }
+
+        nfcWriteStatus?.let { written ->
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Text(written, modifier = Modifier.padding(12.dp))
+            }
+        }
+
+        if (!nfcSupported) {
+            Text(
+                "This phone has no NFC, so tags cannot be written here.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        } else if (!nfcEnabled) {
+            Text(
+                "NFC is switched off — turn it on in Settings, or writing a tag " +
+                    "will arm and then wait forever.",
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
 
         Text("Pointing at", style = MaterialTheme.typography.titleMedium)

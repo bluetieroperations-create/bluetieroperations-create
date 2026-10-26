@@ -70,6 +70,9 @@ fun CompanionScreen(
                 viewModel = viewModel,
                 onBack = viewModel::exitCalibrate,
                 onArmUriWrite = onArmUriWrite,
+                onCancelNfcWrite = onCancelNfcWrite,
+                nfcSupported = nfcSupported,
+                nfcEnabled = nfcEnabled,
             )
             return
         }
