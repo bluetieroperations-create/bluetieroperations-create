@@ -1,6 +1,7 @@
 package com.bluetier.flippercompanion.mobile.ui
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.bluetier.flippercompanion.mobile.ble.BleConnection
@@ -730,6 +731,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ?.lineSequence()
             ?.firstNotNullOfOrNull { TargetTag.targetIdFrom(it.trim()) }
 
+        Log.d("FlipperNfc", "viewmodel tag uid=${info.uidHex} target=$targetId")
         if (targetId != null) onTargetTagTapped(targetId)
     }
 

@@ -4,6 +4,7 @@ import android.app.Activity
 import android.nfc.NdefMessage
 import android.nfc.NdefRecord
 import android.nfc.NfcAdapter
+import android.util.Log
 import android.nfc.Tag
 import android.nfc.tech.Ndef
 import android.nfc.tech.NdefFormatable
@@ -38,6 +39,11 @@ sealed interface NfcWriteResult {
  */
 class NfcReader(private val activity: Activity) {
 
+    private companion object {
+        /** One tag for the whole NFC path, matching the watch's snap logging. */
+        const val LOG_TAG = "FlipperNfc"
+    }
+
     private val adapter: NfcAdapter? = NfcAdapter.getDefaultAdapter(activity)
 
     val isSupported: Boolean get() = adapter != null
@@ -70,7 +76,10 @@ class NfcReader(private val activity: Activity) {
     }
 
     fun enable() {
-        val adapter = adapter ?: return
+        val adapter = adapter ?: run {
+            Log.w(LOG_TAG, "enable: no NFC adapter on this device")
+            return
+        }
         val flags = NfcAdapter.FLAG_READER_NFC_A or
             NfcAdapter.FLAG_READER_NFC_B or
             NfcAdapter.FLAG_READER_NFC_F or
@@ -79,25 +88,42 @@ class NfcReader(private val activity: Activity) {
         // the Tag when it runs its NDEF check, so skipping it makes Ndef.get()
         // return null for every tag.
         adapter.enableReaderMode(activity, ::onTagDiscovered, flags, Bundle())
+        Log.d(LOG_TAG, "reader mode on, adapter enabled=${adapter.isEnabled}")
     }
 
     fun disable() {
         adapter?.disableReaderMode(activity)
+        Log.d(LOG_TAG, "reader mode off")
     }
 
     private fun onTagDiscovered(tag: Tag) {
         // Runs on a background (reader-mode) thread, so blocking tag I/O is fine here.
+        val techs = tag.techList.map { it.substringAfterLast('.') }
+        Log.d(LOG_TAG, "tag seen uid=${tag.id.toHex()} techs=$techs armed=${pendingMessage != null}")
+
         val message = pendingMessage
         if (message != null) {
             pendingMessage = null // one-shot
             _armed.value = false
-            _writeResult.tryEmit(writeTag(tag, message))
+            val result = writeTag(tag, message)
+            Log.d(LOG_TAG, "write result=$result")
+            _writeResult.tryEmit(result)
             return
         }
+
+        // Reading NDEF off a tag is the one step here that touches the tag's
+        // own contents, so it is the one that can fail on a tag that is
+        // otherwise fine. Failing it must not lose the tag: the uid and the
+        // technologies are worth having even when the payload is not readable.
+        val text = runCatching { readNdefText(tag) }
+            .onFailure { Log.w(LOG_TAG, "could not read NDEF from the tag", it) }
+            .getOrNull()
+
+        Log.d(LOG_TAG, "tag read uid=${tag.id.toHex()} ndef=${text?.take(80)}")
         _lastTag.value = NfcTagInfo(
             uidHex = tag.id.toHex(),
-            techList = tag.techList.map { it.substringAfterLast('.') },
-            ndefText = readNdefText(tag),
+            techList = techs,
+            ndefText = text,
         )
     }
 
