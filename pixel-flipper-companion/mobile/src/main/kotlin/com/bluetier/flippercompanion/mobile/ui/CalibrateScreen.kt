@@ -49,10 +49,15 @@ import com.bluetier.flippercompanion.mobile.wear.WatchCapture
  * fields, buttons and list stay still.
  */
 @Composable
-fun CalibrateScreen(viewModel: MainViewModel, onBack: () -> Unit) {
+fun CalibrateScreen(
+    viewModel: MainViewModel,
+    onBack: () -> Unit,
+    onArmUriWrite: (String) -> Unit = {},
+) {
     // Deliberately only slow-changing state at this level.
     val targets by viewModel.targets.collectAsStateWithLifecycle()
     val status by viewModel.calibrationStatus.collectAsStateWithLifecycle()
+    val tagStatus by viewModel.tagStatus.collectAsStateWithLifecycle()
     val dispatchStatus by viewModel.dispatchStatus.collectAsStateWithLifecycle()
     val axis by viewModel.pointingAxis.collectAsStateWithLifecycle()
     val armed by viewModel.captureArmed.collectAsStateWithLifecycle()
@@ -168,6 +173,12 @@ fun CalibrateScreen(viewModel: MainViewModel, onBack: () -> Unit) {
             }
         }
 
+        if (tagStatus.isNotEmpty()) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Text(tagStatus, modifier = Modifier.padding(12.dp))
+            }
+        }
+
         Text("Pointing at", style = MaterialTheme.typography.titleMedium)
         PointingAtCard(viewModel)
 
@@ -230,7 +241,17 @@ fun CalibrateScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                             )
                         }
                     }
-                    OutlinedButton(onClick = { viewModel.removeTarget(target.id) }) { Text("Remove") }
+                    Column(horizontalAlignment = Alignment.End) {
+                        // The tag carries the target's id, not its name or its
+                        // action, so renaming or repointing a target leaves
+                        // every tag that names it still correct.
+                        OutlinedButton(
+                            onClick = { onArmUriWrite(viewModel.armTagWrite(target.id)) },
+                        ) {
+                            Text("Write NFC tag")
+                        }
+                        OutlinedButton(onClick = { viewModel.removeTarget(target.id) }) { Text("Remove") }
+                    }
                 }
             }
         }

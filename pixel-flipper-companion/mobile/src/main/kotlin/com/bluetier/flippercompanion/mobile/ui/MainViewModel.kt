@@ -29,6 +29,7 @@ import com.bluetier.flippercompanion.shared.Bearing
 import com.bluetier.flippercompanion.mobile.target.BearingSampler
 import com.bluetier.flippercompanion.mobile.target.BearingStability
 import com.bluetier.flippercompanion.mobile.target.CompassTrust
+import com.bluetier.flippercompanion.mobile.nfc.TargetTag
 import com.bluetier.flippercompanion.mobile.target.HoldState
 import com.bluetier.flippercompanion.mobile.wear.WatchCapture
 import com.bluetier.flippercompanion.mobile.target.Observation
@@ -138,6 +139,57 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _dispatchStatus.value = ""
         _capturedBearingLabel.value = null
         _captureArmed.value = true
+    }
+
+    /**
+     * What a tapped tag should do next, set by [onTargetTagTapped].
+     *
+     * Exposed so the calibration screen can say which target a tap selected
+     * rather than leaving the next snap to attach itself somewhere unseen.
+     */
+    private val _tagStatus = MutableStateFlow("")
+    val tagStatus: StateFlow<String> = _tagStatus.asStateFlow()
+
+    /** Arms the next tag tap to be written with [targetId]. */
+    fun armTagWrite(targetId: String): String = TargetTag.uriFor(targetId)
+
+    /**
+     * A tag naming a target was tapped.
+     *
+     * On the calibration screen it selects that target for the next snap,
+     * because that is what someone standing at a television with the
+     * calibration screen open is doing. Anywhere else it fires - which is the
+     * whole point of a tag you can tap without opening anything.
+     */
+    fun onTargetTagTapped(targetId: String) {
+        if (TargetStore.registry.value.targets.isEmpty()) TargetStore.load(getApplication())
+        val target = TargetStore.registry.value.byId(targetId)
+        if (target == null) {
+            _tagStatus.value = "That tag names a target that no longer exists"
+            return
+        }
+
+        if (_scanMode.value == ScanMode.CALIBRATE) {
+            WatchCapture.armFor(target.id)
+            _tagStatus.value = "${target.label} selected — snap to teach it an aim"
+            return
+        }
+
+        _tagStatus.value = "${target.label}…"
+        viewModelScope.launch {
+            val outcome = runCatching {
+                dispatcher.dispatch(ActionParser.parse(target.action))
+            }.getOrElse { error ->
+                _tagStatus.value = "${target.label}: ${error.message ?: "failed"}"
+                return@launch
+            }
+            _tagStatus.value = when (outcome) {
+                is DispatchResult.Success -> "${target.label} ✓"
+                is DispatchResult.Rejected -> "${target.label}: refused (${outcome.detail})"
+                is DispatchResult.Unreachable -> "${target.label}: unreachable"
+                is DispatchResult.NotSupported -> "${target.label}: ${outcome.detail}"
+            }
+        }
     }
 
     /**

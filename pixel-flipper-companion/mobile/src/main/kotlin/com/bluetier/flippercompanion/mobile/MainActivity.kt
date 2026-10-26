@@ -2,6 +2,7 @@ package com.bluetier.flippercompanion.mobile
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -21,6 +22,7 @@ import androidx.lifecycle.lifecycleScope
 import com.bluetier.flippercompanion.mobile.nfc.NfcMessages
 import com.bluetier.flippercompanion.mobile.nfc.NfcReader
 import com.bluetier.flippercompanion.mobile.nfc.NfcWriteResult
+import com.bluetier.flippercompanion.mobile.nfc.TargetTag
 import com.bluetier.flippercompanion.mobile.ui.CompanionScreen
 import com.bluetier.flippercompanion.mobile.ui.FlipperTheme
 import com.bluetier.flippercompanion.mobile.ui.MainViewModel
@@ -45,6 +47,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         nfcReader = NfcReader(this)
+        handleTargetTag(intent)
 
         // Forward reader-mode tag reads into the ViewModel.
         lifecycleScope.launch {
@@ -122,6 +125,21 @@ class MainActivity : ComponentActivity() {
         } else {
             listOf(Manifest.permission.ACCESS_FINE_LOCATION)
         }
+
+    /**
+     * A tag tapped while the app was closed arrives as the starting intent; one
+     * tapped while it is open arrives here. Both routes end in the same place.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleTargetTag(intent)
+    }
+
+    private fun handleTargetTag(intent: Intent?) {
+        val id = TargetTag.targetIdFrom(intent?.data?.toString()) ?: return
+        viewModel.onTargetTagTapped(id)
+    }
 
     override fun onResume() {
         super.onResume()

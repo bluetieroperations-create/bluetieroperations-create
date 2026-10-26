@@ -65,7 +65,14 @@ fun CompanionScreen(
         ScanMode.FINDER -> { FinderScreen(viewModel, onBack = viewModel::exitScanMode); return }
         ScanMode.SWEEP -> { SweepScreen(viewModel, onBack = viewModel::exitScanMode); return }
         ScanMode.PROBE -> { ProbeScreen(viewModel, onBack = viewModel::exitScanMode); return }
-        ScanMode.CALIBRATE -> { CalibrateScreen(viewModel, onBack = viewModel::exitCalibrate); return }
+        ScanMode.CALIBRATE -> {
+            CalibrateScreen(
+                viewModel = viewModel,
+                onBack = viewModel::exitCalibrate,
+                onArmUriWrite = onArmUriWrite,
+            )
+            return
+        }
         ScanMode.LIST -> Unit
     }
 
@@ -75,6 +82,7 @@ fun CompanionScreen(
     val nfcArmed by viewModel.nfcArmed.collectAsStateWithLifecycle()
     val nfcWriteStatus by viewModel.nfcWriteStatus.collectAsStateWithLifecycle()
     val watchAction by viewModel.lastWatchAction.collectAsStateWithLifecycle()
+    val tagStatus by viewModel.tagStatus.collectAsStateWithLifecycle()
 
     Column(
         modifier = Modifier
@@ -83,6 +91,14 @@ fun CompanionScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        // A tag tapped from the lock screen lands here, so what it did has to
+        // be visible without going looking for it.
+        if (tagStatus.isNotEmpty()) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Text(tagStatus, modifier = Modifier.padding(12.dp))
+            }
+        }
+
         Text("Flipper Companion", style = MaterialTheme.typography.headlineSmall)
 
         watchAction?.let {
