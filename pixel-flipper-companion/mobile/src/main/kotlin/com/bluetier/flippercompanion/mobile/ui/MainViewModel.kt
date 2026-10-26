@@ -687,8 +687,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         return true
     }
 
+    /**
+     * A tag read by reader mode, which is to say read while this app is open.
+     *
+     * The system does not dispatch NDEF_DISCOVERED while an activity holds
+     * reader mode, so the manifest intent filter only ever fires when the app
+     * is closed. Without this, tapping a tag worked from the launcher and did
+     * nothing at all from inside the app - including on the calibration
+     * screen, which is the one place the tap was most useful.
+     */
     fun onNfcTag(info: NfcTagInfo) {
         _nfcTag.value = info
+
+        // A tag may carry several records; any one of them naming a target is
+        // enough, and anything else is somebody's travel card.
+        val targetId = info.ndefText
+            ?.lineSequence()
+            ?.firstNotNullOfOrNull { TargetTag.targetIdFrom(it.trim()) }
+
+        if (targetId != null) onTargetTagTapped(targetId)
     }
 
     private fun log(line: String) {
