@@ -29,6 +29,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bluetier.flippercompanion.mobile.ble.BleDeviceInfo
 import com.bluetier.flippercompanion.mobile.ble.DeviceIdentity
 import com.bluetier.flippercompanion.mobile.nfc.NfcTagInfo
+import com.bluetier.flippercompanion.mobile.BuildConfig
 
 /**
  * Root phone UI. Shows the NFC panel + BLE scanner, and switches to the GATT
@@ -103,6 +104,13 @@ fun CompanionScreen(
         }
 
         Text("Flipper Companion", style = MaterialTheme.typography.headlineSmall)
+
+        // Which build this is. Small, permanent, and the only way to tell a
+        // fresh install from a stale APK of the same name.
+        Text(
+            "build ${BuildConfig.VERSION_NAME}",
+            style = MaterialTheme.typography.bodySmall,
+        )
 
         watchAction?.let {
             Card(Modifier.fillMaxWidth()) {

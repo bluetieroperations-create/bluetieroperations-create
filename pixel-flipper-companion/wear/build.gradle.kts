@@ -13,7 +13,9 @@ android {
         minSdk = 30
         targetSdk = 34
         versionCode = 1
-        versionName = "0.1.0"
+        // Stamped with the commit so the installed build is identifiable
+        // from inside the app, on a device, with no cable.
+        versionName = "0.1.0-${rootProject.extra["gitSha"]}"
     }
 
     // Shares the repo's committed debug keystore with :mobile. Both modules use
@@ -41,6 +43,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     compileOptions {

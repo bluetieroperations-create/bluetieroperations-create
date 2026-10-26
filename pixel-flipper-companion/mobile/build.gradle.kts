@@ -13,7 +13,9 @@ android {
         minSdk = 29
         targetSdk = 35
         versionCode = 1
-        versionName = "0.1.0"
+        // Stamped with the commit so the installed build is identifiable
+        // from inside the app, on a device, with no cable.
+        versionName = "0.1.0-${rootProject.extra["gitSha"]}"
     }
 
     // Debug builds are signed with a keystore committed to this repo, so every
@@ -49,6 +51,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     compileOptions {

@@ -17,6 +17,7 @@ import androidx.wear.compose.material.ListHeader
 import androidx.wear.compose.material.Text
 import com.bluetier.flippercompanion.shared.WearContract
 import kotlin.math.roundToInt
+import com.bluetier.flippercompanion.wear.BuildConfig
 
 /**
  * Wear OS UI. The watch's strongest role is a remote: each chip fires an action
@@ -37,6 +38,10 @@ fun WearAppScreen(viewModel: MainViewModel) {
 
     ScalingLazyColumn(modifier = Modifier.fillMaxWidth()) {
         item { ListHeader { Text("Flipper Remote") } }
+
+        // Which build this is, for the same reason as on the phone: an APK
+        // reinstalled from a stale download looks identical to a fresh one.
+        item { CenteredText("build ${BuildConfig.VERSION_NAME}") }
 
         item {
             Text(
