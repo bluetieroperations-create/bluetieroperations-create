@@ -49,18 +49,40 @@ data class TransientConfig(
      */
     val minPeak: Double = 15.0,
     /**
-     * And no higher than this. Measured snaps reach 62.8 and claps start at
-     * 74.1, so the bound sits in the gap between them.
+     * And no higher than this.
+     *
+     * 68 sat in the gap between bench snaps, which topped out at 62.8, and
+     * claps, which started at 74.1. That gap does not exist on this wrist:
+     * field logs show deliberate snaps at 79.0 and 93.3 being refused as too
+     * hard, in the same minute as accepted ones at 37.4 and 57.2. How hard a
+     * snap reads depends on the hand, the band and where the fingers are
+     * relative to the watch, and a bound drawn from one session of one wrist
+     * was never going to hold.
+     *
+     * 100 overlaps the measured clap range, which is a real cost: a clap while
+     * pointing at something can now register. That is the lesser failure. A
+     * clap aimed at a television is rare and recoverable; a snap that works
+     * half the time is the thing that makes the whole gesture not worth using.
      */
-    val maxPeak: Double = 68.0,
+    val maxPeak: Double = 100.0,
     /**
      * Fewest samples a transient may span. Measured snaps cover 8-12 samples;
      * this rejects the one- and two-sample blips a knock produces without
      * coming near a real snap.
      */
     val minSampleCount: Int = 5,
-    /** Longer than this is not a snap. */
-    val maxDurationMs: Double = 60.0,
+    /**
+     * Longer than this is not a snap.
+     *
+     * 60 cut off at 12 samples on a 198 Hz stream, and the field logs are full
+     * of 13-sample transients peaking at 52 to 86 - snap-shaped, snap-sized,
+     * and a single sample over the line. 80 allows about 16.
+     *
+     * Safer to widen now than when it was written: the peak floor at 15 does
+     * the work this bound used to share, since the arm swings and footsteps
+     * that run long are also weak.
+     */
+    val maxDurationMs: Double = 80.0,
     /**
      * Peak angular rate above this means the wrist rotated, so not a snap.
      *

@@ -83,11 +83,14 @@ class TransientDetectorTest {
     }
 
     @Test
-    fun `rejects a clap on peak`() {
+    fun `rejects a hard clap on peak`() {
         val feeder = Feeder(TransientDetector(), hz = 198.0)
         feeder.quiet(50)
-        // Claps measured on a wrist peak at 74-135; snaps top out near 63.
-        feeder.snapLike(peak = 95.0)
+        // Claps measured on a wrist peak at 74-135. The ceiling sits at 100,
+        // high enough for the 79-93 snaps the field produced, so only the
+        // harder claps are caught here - see MeasuredWristTest for the one
+        // that is knowingly let through.
+        feeder.snapLike(peak = 120.0)
 
         assertEquals(setOf(RejectReason.TOO_STRONG), feeder.events.single().rejections)
     }

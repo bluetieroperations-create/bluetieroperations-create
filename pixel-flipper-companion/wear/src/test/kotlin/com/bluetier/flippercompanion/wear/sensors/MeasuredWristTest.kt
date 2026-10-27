@@ -66,10 +66,31 @@ class MeasuredWristTest {
     }
 
     @Test
-    fun `every measured clap is rejected`() {
-        claps.forEach { clap ->
-            assertTrue("clap $clap should be rejected", rejections(clap).isNotEmpty())
-        }
+    fun `all but one measured clap is still rejected`() {
+        // Four of the five: three on peak, and the 74.1 one on rotation, which
+        // carried 7.10 rad/s. The exception is deliberate and is the next test.
+        val rejected = claps.count { rejections(it).isNotEmpty() }
+
+        assertEquals(claps.size - 1, rejected)
+    }
+
+    @Test
+    fun `one clap now passes the gates, and that is the price of the ceiling`() {
+        // The 87.8 clap clears a maxPeak of 100 with 12 samples and 4.79 rad/s,
+        // and nothing else in the measured set separates it from a snap.
+        //
+        // This is not an oversight to be fixed later. The ceiling moved because
+        // deliberate snaps on a real wrist were being refused at 79.0 and 93.3,
+        // and no bound can admit those while excluding a clap at 87.8. A clap
+        // aimed at a television is rare and undoes itself; a snap that works
+        // half the time makes the gesture not worth using. Recorded here so the
+        // trade is visible rather than discovered.
+        val borderline = claps.single { it.peak == 87.8 }
+
+        assertTrue(
+            "the known-accepted clap should still be accepted: ${rejections(borderline)}",
+            rejections(borderline).isEmpty(),
+        )
     }
 
     @Test
@@ -78,16 +99,21 @@ class MeasuredWristTest {
     }
 
     @Test
-    fun `the peak threshold sits in the gap between snaps and claps`() {
-        // Nothing was measured between these two, which is what makes an upper
-        // bound on peak a sound discriminator rather than a tuned guess.
+    fun `the peak ceiling clears the bench snaps and most of the claps`() {
+        // There was a gap here once: bench snaps topped out at 62.8 and claps
+        // started at 74.1, so a bound between them separated the two cleanly.
+        //
+        // The field closed that gap. Deliberate snaps were refused at 79.0 and
+        // 93.3 on a wrist this data never covered, which puts real snaps inside
+        // the clap range and makes peak alone an imperfect discriminator. The
+        // ceiling is now a bound on absurdity rather than a dividing line.
         val strongestSnap = snaps.maxOf { it.peak }
-        val weakestClap = claps.minOf { it.peak }
+        val ceiling = TransientConfig().maxPeak
 
-        assertTrue("snaps reached $strongestSnap", strongestSnap < weakestClap)
+        assertTrue("every measured snap must pass: $strongestSnap", strongestSnap < ceiling)
         assertTrue(
-            "maxPeak ${TransientConfig().maxPeak} must separate $strongestSnap from $weakestClap",
-            TransientConfig().maxPeak in strongestSnap..weakestClap,
+            "the ceiling must still reject the hardest claps",
+            claps.count { it.peak > ceiling } >= 3,
         )
     }
 
@@ -117,10 +143,13 @@ class MeasuredWristTest {
     }
 
     @Test
-    fun `the tuned gates reject every non-snap without losing a snap`() {
+    fun `the tuned gates lose no snap, and admit one clap knowingly`() {
         val accepted = (snaps + claps + listOf(knock)).count { rejections(it).isEmpty() }
 
-        assertEquals("all snaps and nothing else", snaps.size, accepted)
+        // Every snap, the one documented clap, and nothing else - the knock and
+        // the four remaining claps stay out.
+        assertEquals("all snaps plus the known clap", snaps.size + 1, accepted)
+        assertTrue("no snap may be lost", snaps.all { rejections(it).isEmpty() })
     }
 
     @Test

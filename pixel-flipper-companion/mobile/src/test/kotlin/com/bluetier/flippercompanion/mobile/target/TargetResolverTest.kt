@@ -15,6 +15,17 @@ class TargetResolverTest {
 
     private fun registryOf(vararg targets: Target) = TargetRegistry(targets.toList())
 
+    /**
+     * A registry holding [targets] plus a decoy on the far side of the room.
+     *
+     * A lone target is deliberately judged by a wider cone, since nothing can
+     * be confused with it. Tests about the narrow tolerance therefore need a
+     * second target to exist; the decoy is 180 degrees away, so it never
+     * competes for a match, it only switches the resolver out of solo mode.
+     */
+    private fun crowdedRegistryOf(vararg targets: Target) =
+        TargetRegistry(targets.toList() + target("decoy-far-away", 169.0, pitch = 0.0))
+
     private fun pointingAt(yaw: Double, pitch: Double = 0.0, seen: Map<String, Double> = emptyMap()) =
         Observation(Bearing(yaw, pitch), seen)
 
@@ -161,7 +172,7 @@ class TargetResolverTest {
 
     @Test
     fun `a stricter heading tolerance refuses what a lenient one accepts`() {
-        val registry = registryOf(target("tv", 90.0))
+        val registry = crowdedRegistryOf(target("tv", 90.0))
         val observation = pointingAt(105.0)
 
         assertTrue(TargetResolver().resolve(registry, observation) is Resolution.Resolved)
@@ -169,6 +180,34 @@ class TargetResolverTest {
             TargetResolver(ResolverConfig(maxYawDegrees = 10.0))
                 .resolve(registry, observation) is Resolution.NoMatch,
         )
+    }
+
+    @Test
+    fun `a lone target is judged generously, and tightens once it has company`() {
+        // 40 degrees out: past the ordinary tolerance, inside the solo one.
+        // With nothing else registered there is nothing this gesture could
+        // have meant instead, so refusing it buys nothing. Adding a second
+        // target restores the narrow cone, and the same aim then misses.
+        val tv = target("tv", 90.0)
+        val observation = pointingAt(130.0)
+
+        assertTrue(
+            "alone, it should resolve",
+            resolver.resolve(registryOf(tv), observation) is Resolution.Resolved,
+        )
+        assertTrue(
+            "with company, the narrow tolerance applies again",
+            resolver.resolve(crowdedRegistryOf(tv), observation) is Resolution.NoMatch,
+        )
+    }
+
+    @Test
+    fun `a lone target still refuses a direction nowhere near it`() {
+        // Generous is not unconditional: the widened cone must not degrade
+        // into "any snap anywhere fires the only thing registered".
+        val resolution = resolver.resolve(registryOf(target("tv", 90.0)), pointingAt(260.0))
+
+        assertTrue(resolution is Resolution.NoMatch)
     }
 
     @Test
@@ -194,7 +233,7 @@ class TargetResolverTest {
         // The boundary moved to 30 and the test moved with it. 45 is past any
         // of those attempts and still well inside the 180 that would make
         // every direction match.
-        val registry = registryOf(target("tv", 349.0, pitch = 43.0))
+        val registry = crowdedRegistryOf(target("tv", 349.0, pitch = 43.0))
 
         val resolution = resolver.resolve(registry, pointingAt(304.0, pitch = 43.0))
 
@@ -211,12 +250,12 @@ class TargetResolverTest {
 
         assertTrue(
             "one aim should not cover it",
-            resolver.resolve(registryOf(base), pointingAt(309.0, pitch = 10.0))
+            resolver.resolve(crowdedRegistryOf(base), pointingAt(309.0, pitch = 10.0))
                 is Resolution.NoMatch,
         )
         assertTrue(
             "the taught aim should",
-            resolver.resolve(registryOf(taught), pointingAt(309.0, pitch = 10.0))
+            resolver.resolve(crowdedRegistryOf(taught), pointingAt(309.0, pitch = 10.0))
                 is Resolution.Resolved,
         )
     }

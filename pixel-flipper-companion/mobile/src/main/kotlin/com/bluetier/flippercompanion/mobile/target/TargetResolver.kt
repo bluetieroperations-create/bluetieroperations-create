@@ -54,6 +54,23 @@ data class ResolverConfig(
      */
     val maxPitchDegrees: Double = 40.0,
     /**
+     * Heading tolerance when the registry holds a single target.
+     *
+     * The tolerances above are narrow for one reason: telling a television
+     * from a lamp beside it. With one target registered there is nothing to
+     * confuse it with, so the only question left is whether the gesture was
+     * deliberate - and the snap detector and the wobble limit already answer
+     * that, well before the resolver sees anything.
+     *
+     * Measured: honest attempts at one television, from one seat, with six
+     * aims taught, still landed 33 degrees out in heading and 23 in elevation.
+     * Refusing those bought nothing, because there was nothing else they could
+     * have meant.
+     */
+    val soloYawDegrees: Double = 55.0,
+    /** Elevation tolerance when the registry holds a single target. */
+    val soloPitchDegrees: Double = 55.0,
+    /**
      * Score lead the winner needs over the runner-up. Below it the resolver
      * declines rather than guessing: firing the wrong device is worse than
      * doing nothing, because the user has to notice and undo it.
@@ -140,8 +157,15 @@ class TargetResolver(private val config: ResolverConfig = ResolverConfig()) {
     fun resolve(registry: TargetRegistry, observation: Observation): Resolution {
         if (registry.targets.isEmpty()) return Resolution.EmptyRegistry
 
+        // A lone target is judged generously: there is no second target for a
+        // wide cone to steal from, so the narrow tolerance only ever cost
+        // genuine gestures. It tightens again the moment a second is added.
+        val solo = registry.targets.size == 1
+        val maxYaw = if (solo) config.soloYawDegrees else config.maxYawDegrees
+        val maxPitch = if (solo) config.soloPitchDegrees else config.maxPitchDegrees
+
         val scored = registry.targets
-            .map { target -> score(target, observation) }
+            .map { target -> score(target, observation, maxYaw, maxPitch) }
             .sortedByDescending { it.score }
 
         val candidates = scored.filter { it.withinTolerance }
@@ -161,14 +185,19 @@ class TargetResolver(private val config: ResolverConfig = ResolverConfig()) {
         }
     }
 
-    private fun score(target: Target, observation: Observation): Candidate {
+    private fun score(
+        target: Target,
+        observation: Observation,
+        maxYaw: Double,
+        maxPitch: Double,
+    ): Candidate {
         // Against the closest recorded aim, not the first one. Each aim is a
         // real attempt at pointing at this thing, so being near any of them is
         // being in a pose that has meant this target before.
         val best = target.aims.minBy { aim ->
             val sep = separationBetween(observation.bearing, aim)
-            val y = sep.yawDegrees / config.maxYawDegrees
-            val p = sep.pitchDegrees / config.maxPitchDegrees
+            val y = sep.yawDegrees / maxYaw
+            val p = sep.pitchDegrees / maxPitch
             y * y + p * p
         }
 
@@ -178,8 +207,8 @@ class TargetResolver(private val config: ResolverConfig = ResolverConfig()) {
         // An ellipse rather than a cone: wide in elevation, narrow in heading.
         // At 1.0 the aim is exactly on the boundary, whichever axis took it
         // there, so one normalised figure orders candidates across both.
-        val yawTerm = separation.yawDegrees / config.maxYawDegrees
-        val pitchTerm = separation.pitchDegrees / config.maxPitchDegrees
+        val yawTerm = separation.yawDegrees / maxYaw
+        val pitchTerm = separation.pitchDegrees / maxPitch
         val normalized = sqrt(yawTerm * yawTerm + pitchTerm * pitchTerm)
 
         // Linear falloff rather than anything fancier: with magnetic error of
