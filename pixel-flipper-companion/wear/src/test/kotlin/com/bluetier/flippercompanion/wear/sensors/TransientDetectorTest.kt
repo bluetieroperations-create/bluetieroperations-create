@@ -122,11 +122,18 @@ class TransientDetectorTest {
     fun `rejects sustained motion as too long`() {
         val feeder = Feeder(TransientDetector(), hz = 198.0)
         feeder.quiet(50)
-        repeat(20) { feeder.feed(Feeder.GRAVITY + 25.0) } // an arm swing, not a snap
+        // 40 samples is about 200 ms: an arm swing, a reach, a door being
+        // pushed. The fixture used to feed 20, which is 101 ms - shorter than
+        // some of the snaps measured in the field, so it was never really
+        // describing sustained motion.
+        repeat(40) { feeder.feed(Feeder.GRAVITY + 25.0) }
 
         val event = feeder.events.single()
         assertEquals(setOf(RejectReason.TOO_LONG), event.rejections)
-        assertTrue("expected > 60 ms, was ${event.durationMs}", event.durationMs > 60.0)
+        assertTrue(
+            "expected longer than the 110 ms bound, was ${event.durationMs}",
+            event.durationMs > 110.0,
+        )
     }
 
     @Test

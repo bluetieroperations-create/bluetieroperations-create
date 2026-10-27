@@ -166,13 +166,15 @@ class SnapRemote(
 
         Log.d(
             LOG_TAG,
-            "accept axis=$axis aim=%.1f/%.1f wobble=%.1f aimSamples=%d peak=%.1f"
+            "accept axis=$axis aim=%.1f/%.1f wobble=%.1f aimSamples=%d peak=%.1f gyro=%.1f samples=%d"
                 .format(
                     aim.bearing.yawDegrees,
                     aim.bearing.pitchDegrees,
                     aim.spreadDegrees,
                     aim.sampleCount,
                     event.peakDeviation,
+                    event.peakGyro,
+                    event.sampleCount,
                 ),
         )
 

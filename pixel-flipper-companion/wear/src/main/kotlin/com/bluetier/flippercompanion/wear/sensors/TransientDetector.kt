@@ -81,8 +81,14 @@ data class TransientConfig(
      * Safer to widen now than when it was written: the peak floor at 15 does
      * the work this bound used to share, since the arm swings and footsteps
      * that run long are also weak.
+     *
+     * 80 was still a sample short. The next field session rejected eight
+     * seventeen-sample transients peaking at 81, 83, 97, 100 and 125 - all
+     * snaps, all 86 ms against an 80 ms bound. 110 leaves room rather than
+     * landing on the next edge, and costs nothing in the measured set, where
+     * no clap or knock runs past thirteen samples.
      */
-    val maxDurationMs: Double = 80.0,
+    val maxDurationMs: Double = 110.0,
     /**
      * Peak angular rate above this means the wrist rotated, so not a snap.
      *
