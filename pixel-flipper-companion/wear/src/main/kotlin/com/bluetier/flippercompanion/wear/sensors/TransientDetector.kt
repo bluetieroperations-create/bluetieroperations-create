@@ -41,13 +41,24 @@ data class TransientConfig(
     /**
      * A transient must peak at least this high to count.
      *
-     * 8.0 came from a bench and was far too low in a room. Field logs caught
-     * it accepting transients peaking at 8.2, 9.2 and 10.7 - arm movements,
-     * each then carrying a direction nobody had aimed, which is worse than
-     * missing the snap entirely. A deliberate snap in the same session peaked
-     * at 42.0, and bench snaps ran to 62.8, so there is a wide gap to sit in.
+     * 8.0 came from a bench and was far too low in a room, accepting arm
+     * movements at 8.2, 9.2 and 10.7. 15.0 was better and still too low: a
+     * labelled session caught five transients at 16.5 to 26.8 accepted as
+     * snaps while their owner was wiping their hands on their shorts.
+     *
+     * Rubbing fabric peaks at 16 to 27. Snaps made while pointing at something
+     * peak at 50 to 100 in the field, and 50.1 to 62.8 on the bench. 30 sits
+     * in that gap.
+     *
+     * It does reject the weakest bench snaps, around 25 - but those were made
+     * with the arm relaxed at the side, which is not how anyone points at a
+     * television. For the pose this gesture actually uses, nothing measured
+     * comes close to the floor.
+     *
+     * A gesture that fires when its owner dries their hands is not a sensitive
+     * gesture, it is a broken one.
      */
-    val minPeak: Double = 15.0,
+    val minPeak: Double = 30.0,
     /**
      * And no higher than this.
      *

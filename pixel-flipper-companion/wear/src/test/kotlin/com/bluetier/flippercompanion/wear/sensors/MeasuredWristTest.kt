@@ -59,9 +59,34 @@ class MeasuredWristTest {
     }
 
     @Test
-    fun `every measured snap passes the gates`() {
-        snaps.forEach { snap ->
+    fun `every snap made while pointing passes the gates`() {
+        // Pointing is the pose this gesture uses, so these are the ones that
+        // must never be lost. They run 50.1 to 62.8, comfortably clear of the
+        // floor.
+        pointingSnaps.forEach { snap ->
             assertEquals("snap $snap should be accepted", emptySet<RejectReason>(), rejections(snap))
+        }
+    }
+
+    @Test
+    fun `the weakest relaxed snaps fall below the floor, and that is intended`() {
+        // Snaps made with the arm hanging at the side reach only 24.9 to 28.8,
+        // inside the 16-to-27 band that hands rubbing on fabric produce. A
+        // labelled session had five such transients accepted as snaps while
+        // their owner was drying their hands.
+        //
+        // Nothing separates a weak relaxed snap from a wipe, so the floor
+        // cannot admit one without the other. It admits neither, and the
+        // gesture asks for a snap made while actually pointing - which is the
+        // only kind it was ever going to act on anyway.
+        val tooWeak = relaxedSnaps.filter { it.peak < TransientConfig().minPeak }
+
+        assertTrue("some relaxed snaps are expected below the floor", tooWeak.isNotEmpty())
+        tooWeak.forEach { snap ->
+            assertTrue(
+                "relaxed snap $snap is below the floor and should be rejected",
+                RejectReason.WEAK_PEAK in rejections(snap),
+            )
         }
     }
 
@@ -143,13 +168,18 @@ class MeasuredWristTest {
     }
 
     @Test
-    fun `the tuned gates lose no snap, and admit one clap knowingly`() {
+    fun `the tuned gates keep every pointing snap, and admit one clap knowingly`() {
+        val strongRelaxed = relaxedSnaps.count { rejections(it).isEmpty() }
         val accepted = (snaps + claps + listOf(knock)).count { rejections(it).isEmpty() }
 
-        // Every snap, the one documented clap, and nothing else - the knock and
-        // the four remaining claps stay out.
-        assertEquals("all snaps plus the known clap", snaps.size + 1, accepted)
-        assertTrue("no snap may be lost", snaps.all { rejections(it).isEmpty() })
+        // Every pointing snap, the stronger relaxed ones, the one documented
+        // clap, and nothing else: the knock, the four remaining claps and the
+        // relaxed snaps that sit in the hand-rubbing band all stay out.
+        assertEquals(pointingSnaps.size + strongRelaxed + 1, accepted)
+        assertTrue(
+            "no snap made while pointing may be lost",
+            pointingSnaps.all { rejections(it).isEmpty() },
+        )
     }
 
     @Test
