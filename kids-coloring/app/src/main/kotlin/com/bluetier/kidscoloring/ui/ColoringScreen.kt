@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -30,9 +31,11 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
+import com.bluetier.kidscoloring.art.Level
 import com.bluetier.kidscoloring.art.Picture
 import kotlin.math.min
 
@@ -45,19 +48,51 @@ fun ColoringScreen(viewModel: ColoringViewModel) {
         modifier = Modifier.fillMaxSize().safeDrawingPadding().padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        // --- Top controls ---
+        // --- Difficulty selector ---
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Level.values().forEach { level ->
+                val selected = level == viewModel.level
+                Button(
+                    onClick = { viewModel.selectLevel(level) },
+                    modifier = Modifier.weight(1f),
+                    colors = if (selected) {
+                        ButtonDefaults.buttonColors()
+                    } else {
+                        ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.primary,
+                        )
+                    },
+                ) { Text(level.label) }
+            }
+        }
+
+        // --- Title + page navigation ---
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Button(onClick = viewModel::previous) { Text("◀") }
-            Text(
-                viewModel.picture.name,
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.weight(1f),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    viewModel.picture.name,
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+                viewModel.picture.subtitle?.let { subtitle ->
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontStyle = FontStyle.Italic,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    )
+                }
+            }
             Button(onClick = viewModel::next) { Text("▶") }
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -77,7 +112,7 @@ fun ColoringScreen(viewModel: ColoringViewModel) {
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .pointerInput(viewModel.index) {
+                .pointerInput(viewModel.level, viewModel.index) {
                     detectTapGestures { tap ->
                         val side = min(size.width, size.height).toFloat()
                         if (side <= 0f) return@detectTapGestures

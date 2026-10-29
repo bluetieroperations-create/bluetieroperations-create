@@ -41,13 +41,13 @@ class GeometryTest {
     @Test fun frontmostRegionWinsOnOverlap() {
         val body = Region("body", Shapes.circle(500, 500, 200))
         val eye = Region("eye", Shapes.circle(560, 460, 30))
-        val picture = Picture("test", listOf(body, eye)) // eye drawn on top
+        val picture = Picture("test", Level.EASY, listOf(body, eye)) // eye drawn on top
         assertEquals("eye", picture.regionAt(560f, 460f)?.id)
         assertEquals("body", picture.regionAt(450f, 540f)?.id)
     }
 
     @Test fun tapOnEmptyAreaHitsNothing() {
-        val picture = Picture("test", listOf(Region("dot", Shapes.circle(500, 500, 50))))
+        val picture = Picture("test", Level.EASY, listOf(Region("dot", Shapes.circle(500, 500, 50))))
         assertNull(picture.regionAt(50f, 50f))
     }
 
@@ -58,6 +58,29 @@ class GeometryTest {
             val ids = picture.regions.map { it.id }
             assertEquals("${picture.name} ids unique", ids.size, ids.toSet().size)
             picture.regions.forEach { assertTrue(it.points.size >= 3) }
+        }
+    }
+
+    @Test fun pictureNamesAreGloballyUnique() {
+        // The view model keys saved fills by picture name, so names must be unique.
+        val names = Pictures.all.map { it.name }
+        assertEquals(names.size, names.toSet().size)
+    }
+
+    @Test fun everyLevelHasPictures() {
+        Level.values().forEach { level ->
+            val forLevel = Pictures.byLevel(level)
+            assertTrue("$level has pictures", forLevel.isNotEmpty())
+            forLevel.forEach { assertEquals(level, it.level) }
+        }
+        // byLevel partitions `all` with nothing lost or duplicated.
+        val recombined = Level.values().sumOf { Pictures.byLevel(it).size }
+        assertEquals(Pictures.all.size, recombined)
+    }
+
+    @Test fun hardPicturesCarryAStyleSubtitle() {
+        Pictures.byLevel(Level.HARD).forEach {
+            assertTrue("${it.name} has a subtitle", !it.subtitle.isNullOrBlank())
         }
     }
 }

@@ -47,6 +47,25 @@ object Shapes {
     }
 }
 
+/** Point-list transforms used to compose richer scenes. */
+object Transform {
+    /** Rotates [points] by [degrees] (clockwise, screen coords) around (cx,cy). */
+    fun rotate(points: List<Pt>, cx: Number, cy: Number, degrees: Number): List<Pt> {
+        val cX = cx.toFloat(); val cY = cy.toFloat()
+        val rad = degrees.toFloat() * (PI.toFloat() / 180f)
+        val cosA = cos(rad.toDouble()).toFloat(); val sinA = sin(rad.toDouble()).toFloat()
+        return points.map { p ->
+            val dx = p.x - cX; val dy = p.y - cY
+            Pt(cX + dx * cosA - dy * sinA, cY + dx * sinA + dy * cosA)
+        }
+    }
+
+    fun translate(points: List<Pt>, dx: Number, dy: Number): List<Pt> {
+        val mx = dx.toFloat(); val my = dy.toFloat()
+        return points.map { Pt(it.x + mx, it.y + my) }
+    }
+}
+
 /** Even-odd ray-casting point-in-polygon test. Pure; the heart of tap-to-fill. */
 object HitTest {
     fun contains(polygon: List<Pt>, x: Float, y: Float): Boolean {
