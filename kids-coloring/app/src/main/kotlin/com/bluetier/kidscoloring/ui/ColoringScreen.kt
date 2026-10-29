@@ -164,7 +164,7 @@ fun ColoringScreen(viewModel: ColoringViewModel) {
 
         // --- Build marker: lets you confirm at a glance which version is installed ---
         Text(
-            "Coloring Fun v0.3 · detailed art",
+            "Coloring Fun v0.4 · biomes",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth(),

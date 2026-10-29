@@ -18,7 +18,7 @@ import com.bluetier.kidscoloring.art.Pictures
  */
 class ColoringViewModel : ViewModel() {
 
-    var level by mutableStateOf(Level.EASY)
+    var level by mutableStateOf(Level.BIOMES)
         private set
 
     var index by mutableIntStateOf(0)

@@ -22,6 +22,9 @@ import kotlin.math.sin
 object Pictures {
 
     val all: List<Picture> = buildList {
+        // BIOMES — detailed organic landscape scenes
+        add(mountainForest()); add(desert()); add(tropicalBeach()); add(arcticTundra())
+        add(jungle()); add(savanna()); add(wetland())
         // EASY — clean, simple, not babyish
         add(crystalGem()); add(crescentStars()); add(mapleLeaf()); add(lotus()); add(simpleMandala())
         // MEDIUM — detailed figures
@@ -51,6 +54,187 @@ object Pictures {
 
     private fun List<List<Pt>>.rotated(cx: Number, cy: Number, deg: Number): List<List<Pt>> =
         map { Transform.rotate(it, cx, cy, deg) }
+
+    // ================= BIOMES: landscape motifs =================
+
+    private fun cactus(cx: Number, baseY: Number, h: Number, scale: Number): List<List<Pt>> {
+        val x = cx.toDouble(); val by = baseY.toDouble(); val hh = h.toDouble(); val s = scale.toDouble()
+        val r = 32 * s
+        val trunk = Scenery.vbar(x, by - hh, by, r)
+        val armL = Scenery.band(
+            listOf(Pt(x.toFloat(), (by - hh * 0.5).toFloat()), Pt((x - 70 * s).toFloat(), (by - hh * 0.5).toFloat()),
+                Pt((x - 70 * s).toFloat(), (by - hh * 0.8).toFloat())), 2 * r * 0.7)
+        val armR = Scenery.band(
+            listOf(Pt(x.toFloat(), (by - hh * 0.62).toFloat()), Pt((x + 75 * s).toFloat(), (by - hh * 0.62).toFloat()),
+                Pt((x + 75 * s).toFloat(), (by - hh * 0.88).toFloat())), 2 * r * 0.7)
+        return listOf(trunk, armL, armR)
+    }
+
+    private fun palm(cx: Number, baseY: Number, h: Number, lean: Number): List<List<Pt>> {
+        val x = cx.toDouble(); val by = baseY.toDouble(); val hh = h.toDouble(); val ln = lean.toDouble()
+        val topX = x + hh * 0.28 * sin(rad(ln)); val topY = by - hh
+        val trunk = Scenery.band(
+            listOf(Pt(x.toFloat(), by.toFloat()), Pt((x + (topX - x) * 0.5).toFloat(), (by - hh * 0.5).toFloat()),
+                Pt(topX.toFloat(), topY.toFloat())), 34)
+        val out = ArrayList<List<Pt>>(); out += trunk
+        for (a in listOf(-155.0, -120.0, -95.0, -82.0, -58.0, -25.0)) {
+            val fx = topX + 150 * cos(rad(a)); val fy = topY + 150 * sin(rad(a))
+            out += Scenery.leaf(fx, fy, 320, 72, a)
+        }
+        out += circle(topX, topY + 16, 20); out += circle(topX + 34, topY + 22, 18)
+        return out
+    }
+
+    private fun acacia(cx: Number, baseY: Number, h: Number, scale: Number): List<List<Pt>> {
+        val x = cx.toDouble(); val by = baseY.toDouble(); val hh = h.toDouble(); val s = scale.toDouble()
+        val cy = by - hh
+        return listOf(
+            Scenery.vbar(x, cy, by, 16 * s),
+            Scenery.canopy(x, cy, 220 * s, 55 * s, 14),
+            Scenery.canopy(x, cy - 30 * s, 150 * s, 42 * s, 12))
+    }
+
+    private fun igloo(cx: Number, baseY: Number, w: Number): List<List<Pt>> {
+        val x = cx.toDouble(); val by = baseY.toDouble(); val r = w.toDouble() / 2
+        val dome = ArrayList<Pt>(); val n = 24
+        for (i in 0..n) { val a = PI + PI * i / n; dome += Pt((x + r * cos(a)).toFloat(), (by + r * sin(a)).toFloat()) }
+        dome += Pt((x + r).toFloat(), by.toFloat()); dome += Pt((x - r).toFloat(), by.toFloat())
+        val er = r * 0.42
+        val ent = ArrayList<Pt>()
+        for (i in 0..12) { val a = PI + PI * i / 12; ent += Pt((x + er * cos(a)).toFloat(), (by + er * sin(a)).toFloat()) }
+        ent += Pt((x + er).toFloat(), by.toFloat()); ent += Pt((x - er).toFloat(), by.toFloat())
+        return listOf(dome, ellipse(x, by - r * 0.55, r * 0.8, r * 0.12), ellipse(x, by - r * 0.25, r * 0.95, r * 0.12), ent)
+    }
+
+    // ================= BIOMES: scenes =================
+
+    private fun mountainForest(): Picture = Build("Mountain Forest", Level.BIOMES, "alpine woodland").apply {
+        add("sky", rect(0, 0, 1000, 1000))
+        add("sun", circle(835, 165, 95))
+        add("cloud1", Scenery.cloud(240, 150, 135, 52, 5))
+        add("cloud2", Scenery.cloud(520, 110, 110, 42, 4))
+        add("cloud3", Scenery.cloud(690, 205, 85, 34, 4))
+        add("range", Scenery.mountains(520, 4, 360))
+        for (i in 0 until 4) {
+            val x = 1000.0 * (i + 0.5) / 4; val ph = 360.0 * (if (i % 2 == 0) 1.0 else 0.62)
+            add("snow$i", Scenery.snowCap(x, 520 - ph, 70, 95))
+        }
+        add("hill1", Scenery.hill(600, 40, 1.5, 0.0))
+        add("hill2", Scenery.hill(690, 52, 2.0, 1.2))
+        add("river", Scenery.band(listOf(Pt(485f, 630f), Pt(525f, 710f), Pt(440f, 790f), Pt(525f, 870f), Pt(470f, 1000f)), 150))
+        for (i in 0 until 5) add("ripple$i", ellipse(485 + (i % 2) * 30, 710 + i * 58, 58, 10))
+        for (i in 0 until 9) add("pine$i", Scenery.pine(70 + i * 105, 650 + (i % 3) * 10, 46, 150, 4))
+        add("trunkL", rect(150, 640, 26, 80)); add("topL", Scenery.canopy(163, 585, 95, 85, 12))
+        add("trunkR", rect(838, 650, 26, 80)); add("topR", Scenery.canopy(851, 600, 90, 80, 12))
+        for (i in 0 until 4) add("bush$i", Scenery.bush(120 + i * 250, 905, 90, 55, 7))
+        add("rock1", Scenery.rock(300, 985, 70, 48)); add("rock2", Scenery.rock(720, 995, 85, 55))
+        addAll("grass", Scenery.grass(0, 1000, 1000, 22, 55))
+    }.build()
+
+    private fun desert(): Picture = Build("Desert", Level.BIOMES, "arid dunes").apply {
+        add("sky", rect(0, 0, 1000, 1000))
+        add("sun", circle(500, 235, 120))
+        add("cloud1", Scenery.cloud(200, 160, 110, 38, 4)); add("cloud2", Scenery.cloud(810, 190, 100, 34, 4))
+        add("mesa1", polygon(0 to 560, 120 to 420, 360 to 420, 420 to 560))
+        add("mesa2", polygon(640 to 540, 720 to 430, 950 to 430, 1000 to 540, 1000 to 560, 640 to 560))
+        add("dune1", Scenery.hill(600, 55, 1.2, 0.0))
+        add("dune2", Scenery.hill(705, 70, 1.6, 2.0))
+        add("dune3", Scenery.hill(835, 60, 2.2, 0.8))
+        addAll("cactusL", cactus(230, 820, 230, 1.0))
+        addAll("cactusR", cactus(765, 860, 280, 1.15))
+        addAll("cactusS", cactus(520, 905, 150, 0.7))
+        add("rock1", Scenery.rock(400, 965, 70, 44)); add("rock2", Scenery.rock(885, 988, 60, 40))
+        for (i in 0 until 6) add("pebble$i", circle(120 + i * 140, 945 + (i % 2) * 25, 16))
+        addAll("grass", Scenery.grass(0, 1000, 1000, 14, 38))
+    }.build()
+
+    private fun tropicalBeach(): Picture = Build("Tropical Beach", Level.BIOMES, "island shore").apply {
+        add("sky", rect(0, 0, 1000, 620))
+        add("sun", circle(175, 175, 90))
+        add("cloud1", Scenery.cloud(600, 140, 130, 46, 5)); add("cloud2", Scenery.cloud(810, 215, 90, 34, 4))
+        add("sea", rect(0, 560, 1000, 220))
+        add("island", polygon(610 to 560, 760 to 470, 905 to 560))
+        add("islandPalm", rect(752, 490, 16, 60))
+        for (i in 0 until 5) add("wave$i", ellipse(150 + i * 180, 600 + (i % 2) * 25, 130, 14))
+        add("beach", Scenery.hill(760, 30, 1.0, 0.0))
+        addAll("palmL", palm(230, 770, 300, -14.0))
+        addAll("palmR", palm(825, 800, 330, 12.0))
+        add("rock1", Scenery.rock(430, 960, 70, 44))
+        add("starfish", star(620, 930, 55, 24, 5))
+        for (i in 0 until 4) add("shell$i", ellipse(150 + i * 205, 945 + (i % 2) * 20, 36, 26))
+        addAll("grass", Scenery.grass(0, 1000, 1000, 12, 42))
+    }.build()
+
+    private fun arcticTundra(): Picture = Build("Arctic Tundra", Level.BIOMES, "frozen north").apply {
+        add("sky", rect(0, 0, 1000, 1000))
+        add("aurora1", Scenery.band(listOf(Pt(0f, 160f), Pt(300f, 120f), Pt(600f, 185f), Pt(1000f, 110f)), 60))
+        add("aurora2", Scenery.band(listOf(Pt(0f, 255f), Pt(350f, 210f), Pt(700f, 275f), Pt(1000f, 210f)), 46))
+        add("moon", circle(820, 150, 70))
+        add("range", Scenery.mountains(540, 3, 340))
+        for (i in 0 until 3) {
+            val x = 1000.0 * (i + 0.5) / 3; val ph = 340.0 * (if (i % 2 == 0) 1.0 else 0.62)
+            add("snow$i", Scenery.snowCap(x, 540 - ph, 80, 110))
+        }
+        add("hill1", Scenery.hill(640, 40, 1.3, 0.0)); add("hill2", Scenery.hill(735, 55, 1.8, 1.5))
+        add("lake", Scenery.hill(835, 18, 0.9, 0.5))
+        for (i in 0 until 4) add("crack$i", ellipse(250 + i * 180, 885 + (i % 2) * 25, 90, 8))
+        for (i in 0 until 7) {
+            val x = 90.0 + i * 135; val by = 705.0 + (i % 2) * 14
+            add("pine$i", Scenery.pine(x, by, 50, 150, 4)); add("pinesnow$i", Scenery.snowCap(x, by - 150, 38, 52))
+        }
+        addAll("igloo", igloo(500, 905, 150))
+        for (i in 0 until 3) add("mound$i", Scenery.bush(180 + i * 320, 985, 90, 45, 5))
+    }.build()
+
+    private fun jungle(): Picture = Build("Jungle", Level.BIOMES, "rainforest").apply {
+        add("sky", rect(0, 0, 1000, 1000))
+        add("sun", circle(500, 155, 80))
+        for (i in 0 until 7) add("canopy$i", Scenery.canopy(60 + i * 150, 180 + (i % 2) * 40, 140, 110, 12))
+        add("trunk1", rect(200, 300, 34, 520)); add("trunk2", rect(760, 320, 34, 500))
+        add("mid1", Scenery.canopy(217, 330, 120, 100, 12)); add("mid2", Scenery.canopy(777, 350, 120, 100, 12))
+        add("vine1", Scenery.band(listOf(Pt(340f, 250f), Pt(360f, 400f), Pt(330f, 560f), Pt(360f, 700f)), 16))
+        add("vine2", Scenery.band(listOf(Pt(640f, 260f), Pt(620f, 420f), Pt(650f, 580f)), 16))
+        add("river", Scenery.band(listOf(Pt(500f, 700f), Pt(545f, 800f), Pt(455f, 900f), Pt(520f, 1000f)), 170))
+        add("leaf1", Scenery.leaf(160, 820, 300, 150, -25.0))
+        add("leaf2", Scenery.leaf(300, 880, 260, 130, 20.0))
+        add("leaf3", Scenery.leaf(840, 830, 300, 150, 25.0))
+        add("leaf4", Scenery.leaf(700, 895, 240, 120, -18.0))
+        for (i in 0 until 5) add("bush$i", Scenery.bush(100 + i * 200, 965, 95, 60, 7))
+        for (i in 0 until 4) { add("flower$i", star(180 + i * 220, 905, 34, 15, 6)); add("flowerC$i", circle(180 + i * 220, 905, 12)) }
+        addAll("grass", Scenery.grass(0, 1000, 1000, 18, 55))
+    }.build()
+
+    private fun savanna(): Picture = Build("Savanna", Level.BIOMES, "grassland").apply {
+        add("sky", rect(0, 0, 1000, 1000))
+        add("sun", circle(500, 260, 150))
+        add("cloud1", Scenery.cloud(180, 150, 100, 34, 4)); add("cloud2", Scenery.cloud(825, 170, 90, 30, 4))
+        add("plain1", Scenery.hill(560, 26, 1.0, 0.0))
+        add("plain2", Scenery.hill(665, 36, 1.4, 1.0))
+        add("plain3", Scenery.hill(785, 30, 1.8, 2.0))
+        addAll("acaciaL", acacia(220, 660, 300, 1.1))
+        addAll("acaciaR", acacia(765, 700, 260, 1.0))
+        addAll("acaciaM", acacia(520, 620, 200, 0.8))
+        for (i in 0 until 5) add("bush$i", Scenery.bush(90 + i * 210, 905, 95, 55, 7))
+        add("rock1", Scenery.rock(360, 975, 70, 44)); add("rock2", Scenery.rock(825, 988, 60, 40))
+        addAll("grassTall", Scenery.grass(0, 1000, 920, 16, 110))
+        addAll("grass", Scenery.grass(0, 1000, 1000, 20, 60))
+    }.build()
+
+    private fun wetland(): Picture = Build("Wetland", Level.BIOMES, "marsh").apply {
+        add("sky", rect(0, 0, 1000, 520))
+        add("sun", circle(765, 170, 85))
+        add("cloud1", Scenery.cloud(240, 150, 110, 40, 4)); add("cloud2", Scenery.cloud(520, 120, 90, 32, 4))
+        add("hillBack", Scenery.hill(470, 30, 1.2, 0.0, 520))
+        for (i in 0 until 6) add("treeLine$i", Scenery.canopy(90 + i * 170, 440, 80, 70, 11))
+        add("water", rect(0, 520, 1000, 480))
+        for (i in 0 until 6) add("ripple$i", ellipse(150 + (i % 3) * 300, 600 + i * 60, 150, 12))
+        add("cyp1", Scenery.pine(180, 560, 50, 300, 6)); add("cypTrunk1", rect(168, 540, 24, 50))
+        add("cyp2", Scenery.pine(840, 580, 46, 270, 6)); add("cypTrunk2", rect(828, 560, 24, 50))
+        for (i in 0 until 10) add("reed$i", Scenery.vbar(60.0 + i * 100, 480.0 + (i % 3) * 20, 640.0 + (i % 2) * 30, 9))
+        val pads = listOf(300 to 720, 520 to 790, 700 to 740, 420 to 860, 640 to 880)
+        pads.forEachIndexed { i, (x, y) -> add("pad$i", ellipse(x, y, 80, 42)); add("lily$i", star(x, y - 6, 32, 14, 6)) }
+        addAll("grass", Scenery.grass(0, 1000, 1000, 16, 50))
+    }.build()
 
     // ================= EASY =================
 

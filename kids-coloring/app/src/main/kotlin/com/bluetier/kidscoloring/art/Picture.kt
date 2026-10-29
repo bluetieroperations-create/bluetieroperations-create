@@ -1,7 +1,10 @@
 package com.bluetier.kidscoloring.art
 
-/** Difficulty tiers: fewer/bigger regions (EASY) up to many fine regions (HARD). */
-enum class Level(val label: String) { EASY("Easy"), MEDIUM("Medium"), HARD("Hard") }
+/**
+ * Page groups. EASY→HARD are difficulty tiers (fewer/bigger regions up to many
+ * fine ones); BIOMES is a set of detailed organic landscape scenes.
+ */
+enum class Level(val label: String) { BIOMES("Biomes"), EASY("Easy"), MEDIUM("Medium"), HARD("Hard") }
 
 /** A fillable area of a picture, identified by a stable [id]. */
 data class Region(val id: String, val points: List<Pt>)

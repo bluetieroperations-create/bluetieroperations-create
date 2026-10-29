@@ -5,8 +5,12 @@ difficulty, tap a region to fill it with the selected crayon, flip between
 pictures, and save your art to the gallery. No ads, no network, no tracking, no
 accounts.
 
-- **Three difficulty levels** — a difficulty selector at the top switches
-  between pages aimed at older kids, teens and adults (not toddlers):
+- **Four page groups** — a selector at the top switches between pages aimed at
+  older kids, teens and adults (not toddlers):
+  - **Biomes** — detailed, hand-drawn-style landscape scenes, one per biome:
+    Mountain Forest, Desert, Tropical Beach, Arctic Tundra, Jungle, Savanna,
+    Wetland. Built from organic, curve-based scenery (wavy hills, puffy clouds,
+    soft tree canopies, winding rivers, rounded rocks) rather than hard polygons.
   - **Easy** — clean, simple designs (Crystal Gem, Crescent & Stars, Maple Leaf,
     Lotus, Simple Mandala).
   - **Medium** — detailed figures (Rose, Butterfly, Koi, Owl, Seashell, Sailing).

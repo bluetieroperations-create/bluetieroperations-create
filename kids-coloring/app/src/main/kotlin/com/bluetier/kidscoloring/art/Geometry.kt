@@ -3,6 +3,7 @@ package com.bluetier.kidscoloring.art
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
  * A point in the pictures' authoring space, a 0..1000 square (x right, y down).
@@ -144,6 +145,162 @@ object Mandala {
         return (0 until count).map { i ->
             val a = TOP + pitch * i
             Shapes.circle(x + rr * cos(a), y + rr * sin(a), beadRadius, sides)
+        }
+    }
+}
+
+/**
+ * Organic scenery generators for hand-drawn-style landscape pages: wavy hills,
+ * jagged ranges, puffy clouds, soft tree canopies, conifers, bushes, winding
+ * bands (rivers/paths), rounded rocks and grass. Curves are sampled as many
+ * points so fills read as flowing line art, not hard polygons. Pure Kotlin.
+ */
+object Scenery {
+    private fun pt(x: Double, y: Double) = Pt(x.toFloat(), y.toFloat())
+
+    /** Full-width ground/hill band: wavy top edge at [topY] (±[amp], [waves] humps), filled to [bottom]. */
+    fun hill(topY: Number, amp: Number, waves: Double, phase: Double = 0.0, bottom: Number = 1000, width: Number = 1000, steps: Int = 96): List<Pt> {
+        val w = width.toDouble(); val ty = topY.toDouble(); val a = amp.toDouble(); val bot = bottom.toDouble()
+        val pts = ArrayList<Pt>(steps + 3)
+        for (i in 0..steps) pts += pt(w * i / steps, ty + a * sin(2 * PI * waves * i / steps + phase))
+        pts += pt(w, bot); pts += pt(0.0, bot)
+        return pts
+    }
+
+    /** Jagged mountain range: [count] peaks up to [height], valleys at [baseY], filled to [bottom]. */
+    fun mountains(baseY: Number, count: Int, height: Number, width: Number = 1000, bottom: Number = 1000, rough: Double = 0.62): List<Pt> {
+        val w = width.toDouble(); val by = baseY.toDouble(); val h = height.toDouble(); val bot = bottom.toDouble()
+        val pts = ArrayList<Pt>()
+        pts += pt(0.0, by)
+        for (i in 0 until count) {
+            val x0 = w * i / count; val x1 = w * (i + 1) / count
+            val peakH = h * (if (i % 2 == 0) 1.0 else rough)
+            pts += pt(x0 + (x1 - x0) * 0.28, by - peakH * 0.55)
+            pts += pt((x0 + x1) / 2, by - peakH)
+            pts += pt(x0 + (x1 - x0) * 0.72, by - peakH * 0.5)
+            pts += pt(x1, by)
+        }
+        pts += pt(w, bot); pts += pt(0.0, bot)
+        return pts
+    }
+
+    /** Snow cap sitting on a peak at (cx, peakY). */
+    fun snowCap(cx: Number, peakY: Number, halfW: Number, drop: Number): List<Pt> {
+        val x = cx.toDouble(); val y = peakY.toDouble(); val hw = halfW.toDouble(); val d = drop.toDouble()
+        return listOf(pt(x, y), pt(x + hw, y + d), pt(x + hw * 0.4, y + d * 0.6), pt(x, y + d), pt(x - hw * 0.4, y + d * 0.6), pt(x - hw, y + d))
+    }
+
+    /** A puffy cloud (scalloped oval). */
+    fun cloud(cx: Number, cy: Number, rx: Number, ry: Number, bumps: Int = 5): List<Pt> {
+        val x = cx.toDouble(); val y = cy.toDouble(); val rX = rx.toDouble(); val rY = ry.toDouble()
+        val steps = bumps * 8
+        return (0 until steps).map { i ->
+            val a = 2 * PI * i / steps
+            val m = 1.0 + 0.16 * cos(bumps * a)
+            pt(x + rX * m * cos(a), y + rY * m * sin(a))
+        }
+    }
+
+    /** A soft round tree canopy (leafy scalloped blob). */
+    fun canopy(cx: Number, cy: Number, rx: Number, ry: Number, bumps: Int = 11): List<Pt> {
+        val x = cx.toDouble(); val y = cy.toDouble(); val rX = rx.toDouble(); val rY = ry.toDouble()
+        val steps = bumps * 6
+        return (0 until steps).map { i ->
+            val a = 2 * PI * i / steps
+            val m = 1.0 + 0.14 * cos(bumps * a)
+            pt(x + rX * m * cos(a), y + rY * m * sin(a))
+        }
+    }
+
+    /** A conifer/pine silhouette with [tiers] zigzag branches, apex up. */
+    fun pine(cx: Number, baseY: Number, width: Number, height: Number, tiers: Int = 4): List<Pt> {
+        val x = cx.toDouble(); val by = baseY.toDouble(); val w = width.toDouble(); val h = height.toDouble()
+        val right = ArrayList<Pt>(); val left = ArrayList<Pt>()
+        right += pt(x, by - h)
+        for (t in 1..tiers) {
+            val frac = t.toDouble() / tiers
+            val y = by - h + h * frac
+            val hw = w * frac
+            right += pt(x + hw, y)
+            if (t < tiers) right += pt(x + hw * 0.5, y + h / tiers * 0.08)
+            left += pt(x - hw, y)
+            if (t < tiers) left += pt(x - hw * 0.5, y + h / tiers * 0.08)
+        }
+        right += pt(x + w * 0.12, by); left += pt(x - w * 0.12, by)
+        return right + left.reversed()
+    }
+
+    /** A low bush (wide scalloped blob) sitting on [baseY]. */
+    fun bush(cx: Number, baseY: Number, rx: Number, ry: Number, bumps: Int = 7): List<Pt> {
+        val x = cx.toDouble(); val by = baseY.toDouble(); val rX = rx.toDouble(); val rY = ry.toDouble()
+        val steps = bumps * 6
+        val pts = ArrayList<Pt>()
+        for (i in 0..steps) {
+            val a = PI + PI * i / steps
+            val m = 1.0 + 0.18 * cos(bumps * a)
+            pts += pt(x + rX * m * cos(a), by + rY * m * sin(a))
+        }
+        pts += pt(x + rX, by); pts += pt(x - rX, by)
+        return pts
+    }
+
+    /** A winding band (river/path) of constant [width] along a centre line. */
+    fun band(center: List<Pt>, width: Number): List<Pt> {
+        val half = width.toDouble() / 2
+        val left = ArrayList<Pt>(); val right = ArrayList<Pt>()
+        for (i in center.indices) {
+            val prev = center[if (i == 0) 0 else i - 1]
+            val next = center[if (i == center.size - 1) center.size - 1 else i + 1]
+            val dx = (next.x - prev.x).toDouble(); val dy = (next.y - prev.y).toDouble()
+            val len = sqrt(dx * dx + dy * dy).coerceAtLeast(1e-4)
+            val nx = -dy / len; val ny = dx / len
+            left += pt(center[i].x + nx * half, center[i].y + ny * half)
+            right += pt(center[i].x - nx * half, center[i].y - ny * half)
+        }
+        return left + right.reversed()
+    }
+
+    /** A rounded rock/boulder resting on [baseY]. */
+    fun rock(cx: Number, baseY: Number, rx: Number, ry: Number): List<Pt> {
+        val x = cx.toDouble(); val by = baseY.toDouble(); val rX = rx.toDouble(); val rY = ry.toDouble()
+        val steps = 20
+        val pts = ArrayList<Pt>()
+        for (i in 0..steps) {
+            val a = PI + PI * i / steps
+            val m = 1.0 + 0.05 * cos(3 * a)
+            pts += pt(x + rX * m * cos(a), by + rY * m * sin(a))
+        }
+        pts += pt(x + rX, by); pts += pt(x - rX, by)
+        return pts
+    }
+
+    /** A vertical capsule (rounded bar) from [topY] to [botY], radius [r] — cactus limbs, reeds, posts. */
+    fun vbar(cx: Number, topY: Number, botY: Number, r: Number): List<Pt> {
+        val x = cx.toDouble(); val ty = topY.toDouble(); val by = botY.toDouble(); val rr = r.toDouble()
+        val n = 10; val pts = ArrayList<Pt>()
+        for (i in 0..n) { val a = PI + PI * i / n; pts += pt(x + rr * cos(a), ty + rr * sin(a)) } // top cap
+        pts += pt(x + rr, by)
+        for (i in 0..n) { val a = PI * i / n; pts += pt(x + rr * cos(a), by + rr * sin(a)) }       // bottom cap
+        pts += pt(x - rr, ty)
+        return pts
+    }
+
+    /** A pointed leaf / frond of length [len] and width [wid], centred at (cx,cy), rotated [deg]. */
+    fun leaf(cx: Number, cy: Number, len: Number, wid: Number, deg: Number): List<Pt> {
+        val x = cx.toFloat(); val y = cy.toFloat(); val l = len.toDouble(); val wd = wid.toDouble()
+        val n = 12; val pts = ArrayList<Pt>()
+        for (i in 0..n) { val t = -1.0 + 2.0 * i / n; pts += Pt((x + l / 2 * t).toFloat(), (y + wd / 2 * (1 - t * t)).toFloat()) }
+        for (i in 0..n) { val t = 1.0 - 2.0 * i / n; pts += Pt((x + l / 2 * t).toFloat(), (y - wd / 2 * (1 - t * t)).toFloat()) }
+        return Transform.rotate(pts, x, y, deg)
+    }
+
+    /** A row of [count] grass tufts between [x0] and [x1] at [baseY], each [h] tall. */
+    fun grass(x0: Number, x1: Number, baseY: Number, count: Int, h: Number): List<List<Pt>> {
+        val a = x0.toDouble(); val b = x1.toDouble(); val by = baseY.toDouble(); val hh = h.toDouble()
+        return (0 until count).map { i ->
+            val cx = a + (b - a) * (i + 0.5) / count
+            listOf(pt(cx - hh * 0.35, by), pt(cx - hh * 0.12, by - hh), pt(cx, by - hh * 0.5),
+                pt(cx + hh * 0.12, by - hh), pt(cx + hh * 0.35, by))
         }
     }
 }
