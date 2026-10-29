@@ -10,6 +10,13 @@ enum class Level(val label: String) { BIOMES("Biomes"), EASY("Easy"), MEDIUM("Me
 data class Region(val id: String, val points: List<Pt>)
 
 /**
+ * A decorative line overlay drawn on top of the fills (open polyline, not
+ * closed, not fillable). [weight] scales its thinness relative to the base
+ * detail-line width — used for bark, veins, ripples, branch tiers, etc.
+ */
+data class Stroke(val points: List<Pt>, val weight: Float = 1f)
+
+/**
  * One colouring page: a name, a difficulty [level], an optional [subtitle]
  * (e.g. "in the style of Van Gogh"), and its fillable regions drawn back-to-front
  * (first region is backmost; later regions sit on top).
@@ -19,6 +26,7 @@ data class Picture(
     val level: Level,
     val regions: List<Region>,
     val subtitle: String? = null,
+    val details: List<Stroke> = emptyList(),
 ) {
     /**
      * The region tapped at ([x],[y]) in authoring space, or null if the tap

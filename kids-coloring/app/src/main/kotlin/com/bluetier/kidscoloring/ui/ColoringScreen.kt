@@ -27,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -142,6 +143,21 @@ fun ColoringScreen(viewModel: ColoringViewModel) {
             paths.forEach { (_, path) ->
                 drawPath(path, color = Color.Black, style = Stroke(width = side * 0.012f, join = StrokeJoin.Round))
             }
+            // Decorative detail lines on top (thin, not fillable).
+            viewModel.picture.details.forEach { stroke ->
+                val p = Path().apply {
+                    stroke.points.forEachIndexed { i, pt ->
+                        val x = dx + pt.x * scale
+                        val y = dy + pt.y * scale
+                        if (i == 0) moveTo(x, y) else lineTo(x, y)
+                    }
+                }
+                drawPath(
+                    p,
+                    color = Color.Black,
+                    style = Stroke(width = side * 0.006f * stroke.weight, join = StrokeJoin.Round, cap = StrokeCap.Round),
+                )
+            }
         }
 
         // --- Crayon palette ---
@@ -164,7 +180,7 @@ fun ColoringScreen(viewModel: ColoringViewModel) {
 
         // --- Build marker: lets you confirm at a glance which version is installed ---
         Text(
-            "Coloring Fun v0.4 · biomes",
+            "Coloring Fun v0.5 · detailed biomes",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth(),

@@ -40,12 +40,17 @@ object Pictures {
 
     private class Build(val name: String, val level: Level, val subtitle: String? = null) {
         private val regions = ArrayList<Region>()
+        private val details = ArrayList<Stroke>()
         fun add(id: String, pts: List<Pt>): Build { regions += Region(id, pts); return this }
         fun addAll(prefix: String, polys: List<List<Pt>>): Build {
             polys.forEachIndexed { i, p -> add("$prefix$i", p) }
             return this
         }
-        fun build() = Picture(name, level, regions, subtitle)
+        /** Add one decorative detail line (open polyline, drawn thin over the fills). */
+        fun line(pts: List<Pt>, weight: Float = 1f): Build { if (pts.size >= 2) details += Stroke(pts, weight); return this }
+        /** Add several detail lines at once. */
+        fun lines(strokes: List<List<Pt>>, weight: Float = 1f): Build { strokes.forEach { line(it, weight) }; return this }
+        fun build() = Picture(name, level, regions, subtitle, details)
     }
 
     private fun rad(deg: Double) = deg * PI / 180.0
@@ -129,6 +134,13 @@ object Pictures {
         for (i in 0 until 4) add("bush$i", Scenery.bush(120 + i * 250, 905, 90, 55, 7))
         add("rock1", Scenery.rock(300, 985, 70, 48)); add("rock2", Scenery.rock(720, 995, 85, 55))
         addAll("grass", Scenery.grass(0, 1000, 1000, 22, 55))
+        // detail lines
+        lines(Scenery.puffs(240, 150, 135, 52), 0.9f); lines(Scenery.puffs(520, 110, 110, 42, 2), 0.9f)
+        lines(Scenery.puffs(690, 205, 85, 34, 2), 0.9f)
+        for (i in 0 until 9) lines(Scenery.pineTiers(70 + i * 105, 650 + (i % 3) * 10, 46, 150, 4), 0.8f)
+        lines(Scenery.barkLines(163, 645, 715, 2, 16), 0.8f); lines(Scenery.barkLines(851, 655, 725, 2, 16), 0.8f)
+        lines(Scenery.waterLines(435, 545, 720, 4, 55, 7, 2.0), 0.9f)
+        for (i in 0 until 4) { val x = 1000.0 * (i + 0.5) / 4; val ph = 360.0 * (if (i % 2 == 0) 1.0 else 0.62); line(listOf(Pt(x.toFloat(), (520 - ph).toFloat()), Pt((x - 45).toFloat(), 555f)), 0.8f) }
     }.build()
 
     private fun desert(): Picture = Build("Desert", Level.BIOMES, "arid dunes").apply {
@@ -146,6 +158,12 @@ object Pictures {
         add("rock1", Scenery.rock(400, 965, 70, 44)); add("rock2", Scenery.rock(885, 988, 60, 40))
         for (i in 0 until 6) add("pebble$i", circle(120 + i * 140, 945 + (i % 2) * 25, 16))
         addAll("grass", Scenery.grass(0, 1000, 1000, 14, 38))
+        // detail lines (cactus ribs, dune ribs, cloud puffs)
+        lines(Scenery.puffs(200, 160, 110, 38, 2), 0.9f); lines(Scenery.puffs(810, 190, 100, 34, 2), 0.9f)
+        lines(Scenery.barkLines(230, 600, 810, 3, 34), 0.8f)
+        lines(Scenery.barkLines(765, 590, 850, 3, 40), 0.8f)
+        lines(Scenery.barkLines(520, 760, 895, 2, 22), 0.8f)
+        lines(Scenery.waterLines(60, 940, 720, 3, 70, 6, 1.5), 0.7f)
     }.build()
 
     private fun tropicalBeach(): Picture = Build("Tropical Beach", Level.BIOMES, "island shore").apply {
@@ -163,6 +181,9 @@ object Pictures {
         add("starfish", star(620, 930, 55, 24, 5))
         for (i in 0 until 4) add("shell$i", ellipse(150 + i * 205, 945 + (i % 2) * 20, 36, 26))
         addAll("grass", Scenery.grass(0, 1000, 1000, 12, 42))
+        // detail lines (sea ripples, cloud puffs)
+        lines(Scenery.waterLines(0, 1000, 600, 4, 40, 7, 3.0), 0.8f)
+        lines(Scenery.puffs(600, 140, 130, 46), 0.9f); lines(Scenery.puffs(810, 215, 90, 34, 2), 0.9f)
     }.build()
 
     private fun arcticTundra(): Picture = Build("Arctic Tundra", Level.BIOMES, "frozen north").apply {
@@ -184,6 +205,9 @@ object Pictures {
         }
         addAll("igloo", igloo(500, 905, 150))
         for (i in 0 until 3) add("mound$i", Scenery.bush(180 + i * 320, 985, 90, 45, 5))
+        // detail lines (ice cracks, pine needles)
+        lines(Scenery.waterLines(0, 1000, 870, 3, 30, 5, 2.5), 0.7f)
+        for (i in 0 until 7) lines(Scenery.pineTiers(90.0 + i * 135, 705.0 + (i % 2) * 14, 50, 150, 4), 0.8f)
     }.build()
 
     private fun jungle(): Picture = Build("Jungle", Level.BIOMES, "rainforest").apply {
@@ -202,6 +226,14 @@ object Pictures {
         for (i in 0 until 5) add("bush$i", Scenery.bush(100 + i * 200, 965, 95, 60, 7))
         for (i in 0 until 4) { add("flower$i", star(180 + i * 220, 905, 34, 15, 6)); add("flowerC$i", circle(180 + i * 220, 905, 12)) }
         addAll("grass", Scenery.grass(0, 1000, 1000, 18, 55))
+        // detail lines (leaf veins, bark, canopy puffs, river ripples)
+        lines(Scenery.leafVeins(160, 820, 300, 150, -25.0, 4), 0.8f)
+        lines(Scenery.leafVeins(300, 880, 260, 130, 20.0, 4), 0.8f)
+        lines(Scenery.leafVeins(840, 830, 300, 150, 25.0, 4), 0.8f)
+        lines(Scenery.leafVeins(700, 895, 240, 120, -18.0, 3), 0.8f)
+        lines(Scenery.barkLines(217, 300, 820, 3, 30), 0.8f); lines(Scenery.barkLines(777, 320, 820, 3, 30), 0.8f)
+        for (i in 0 until 7) lines(Scenery.puffs(60 + i * 150, 180 + (i % 2) * 40, 140, 110, 3), 0.8f)
+        lines(Scenery.waterLines(440, 560, 760, 3, 70, 8, 2.0), 0.9f)
     }.build()
 
     private fun savanna(): Picture = Build("Savanna", Level.BIOMES, "grassland").apply {
@@ -218,6 +250,11 @@ object Pictures {
         add("rock1", Scenery.rock(360, 975, 70, 44)); add("rock2", Scenery.rock(825, 988, 60, 40))
         addAll("grassTall", Scenery.grass(0, 1000, 920, 16, 110))
         addAll("grass", Scenery.grass(0, 1000, 1000, 20, 60))
+        // detail lines (acacia canopy puffs, cloud puffs)
+        lines(Scenery.puffs(220, 360, 242, 60, 4), 0.8f)
+        lines(Scenery.puffs(765, 440, 220, 55, 4), 0.8f)
+        lines(Scenery.puffs(520, 420, 160, 44, 3), 0.8f)
+        lines(Scenery.puffs(180, 150, 100, 34, 2), 0.9f); lines(Scenery.puffs(825, 170, 90, 30, 2), 0.9f)
     }.build()
 
     private fun wetland(): Picture = Build("Wetland", Level.BIOMES, "marsh").apply {
@@ -234,6 +271,10 @@ object Pictures {
         val pads = listOf(300 to 720, 520 to 790, 700 to 740, 420 to 860, 640 to 880)
         pads.forEachIndexed { i, (x, y) -> add("pad$i", ellipse(x, y, 80, 42)); add("lily$i", star(x, y - 6, 32, 14, 6)) }
         addAll("grass", Scenery.grass(0, 1000, 1000, 16, 50))
+        // detail lines (water ripples, cypress needles, pad veins)
+        lines(Scenery.waterLines(0, 1000, 560, 5, 60, 8, 3.0), 0.8f)
+        lines(Scenery.pineTiers(180, 560, 50, 300, 6), 0.8f); lines(Scenery.pineTiers(840, 580, 46, 270, 6), 0.8f)
+        pads.forEach { (x, y) -> line(listOf(Pt((x - 70).toFloat(), y.toFloat()), Pt((x + 70).toFloat(), y.toFloat())), 0.7f) }
     }.build()
 
     // ================= EASY =================

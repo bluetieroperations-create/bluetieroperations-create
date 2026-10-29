@@ -303,6 +303,59 @@ object Scenery {
                 pt(cx + hh * 0.12, by - hh), pt(cx + hh * 0.35, by))
         }
     }
+
+    // --- detail-line overlays (open polylines, drawn thin over the fills) ----
+
+    /** [count] gently wavy horizontal lines (water ripples / sand ribs) between y0 and y0+count*gap. */
+    fun waterLines(x0: Number, x1: Number, y0: Number, count: Int, gap: Number, amp: Number, waves: Double): List<List<Pt>> {
+        val a = x0.toDouble(); val b = x1.toDouble(); val yy = y0.toDouble(); val g = gap.toDouble(); val am = amp.toDouble()
+        return (0 until count).map { r ->
+            val y = yy + r * g
+            (0..40).map { i -> pt(a + (b - a) * i / 40.0, y + am * sin(2 * PI * waves * i / 40 + r)) }
+        }
+    }
+
+    /** [count] vertical bark lines over a trunk spanning [topY]..[botY], within ±[spread]/2 of [cx]. */
+    fun barkLines(cx: Number, topY: Number, botY: Number, count: Int, spread: Number): List<List<Pt>> {
+        val x = cx.toDouble(); val ty = topY.toDouble(); val by = botY.toDouble(); val sp = spread.toDouble()
+        return (0 until count).map { k ->
+            val ox = x - sp / 2 + sp * k / (count - 1).coerceAtLeast(1)
+            (0..8).map { i -> val t = i / 8.0; pt(ox + 4 * sin(6 * t + k), ty + (by - ty) * t) }
+        }
+    }
+
+    /** Branch-tier lines inside a conifer (shallow V at each tier). */
+    fun pineTiers(cx: Number, baseY: Number, width: Number, height: Number, tiers: Int): List<List<Pt>> {
+        val x = cx.toDouble(); val by = baseY.toDouble(); val w = width.toDouble(); val h = height.toDouble()
+        return (1 until tiers).map { t ->
+            val frac = t.toDouble() / tiers
+            val y = by - h + h * frac
+            val hw = w * frac * 0.8
+            listOf(pt(x - hw, y), pt(x, y + h / tiers * 0.18), pt(x + hw, y))
+        }
+    }
+
+    /** A midrib plus [pairs] side veins for a leaf of [len]×[wid] at (cx,cy), rotated [deg]. */
+    fun leafVeins(cx: Number, cy: Number, len: Number, wid: Number, deg: Number, pairs: Int): List<List<Pt>> {
+        val x = cx.toFloat(); val y = cy.toFloat(); val l = len.toDouble(); val wd = wid.toDouble()
+        val out = ArrayList<List<Pt>>()
+        out += Transform.rotate(listOf(Pt((x - l / 2).toFloat(), y), Pt((x + l / 2).toFloat(), y)), x, y, deg)
+        for (k in 1..pairs) {
+            val fx = -l / 2 + l * k / (pairs + 1)
+            out += Transform.rotate(listOf(Pt((x + fx).toFloat(), y), Pt((x + fx + l * 0.12).toFloat(), (y - wd * 0.35).toFloat())), x, y, deg)
+            out += Transform.rotate(listOf(Pt((x + fx).toFloat(), y), Pt((x + fx + l * 0.12).toFloat(), (y + wd * 0.35).toFloat())), x, y, deg)
+        }
+        return out
+    }
+
+    /** A few small arcs inside a cloud/canopy to suggest puffs. */
+    fun puffs(cx: Number, cy: Number, rx: Number, ry: Number, count: Int = 3): List<List<Pt>> {
+        val x = cx.toDouble(); val y = cy.toDouble(); val rX = rx.toDouble(); val rY = ry.toDouble()
+        return (0 until count).map { k ->
+            val ox = x - rX * 0.45 + rX * 0.9 * k / (count - 1).coerceAtLeast(1)
+            (0..10).map { i -> val a = PI + PI * i / 10; pt(ox + rX * 0.26 * cos(a), y + rY * 0.25 + rY * 0.26 * sin(a)) }
+        }
+    }
 }
 
 /** Even-odd ray-casting point-in-polygon test. Pure; the heart of tap-to-fill. */
