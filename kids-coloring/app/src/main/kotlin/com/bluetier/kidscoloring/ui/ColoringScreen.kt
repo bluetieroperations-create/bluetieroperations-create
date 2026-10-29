@@ -161,5 +161,14 @@ fun ColoringScreen(viewModel: ColoringViewModel) {
                 ) {}
             }
         }
+
+        // --- Build marker: lets you confirm at a glance which version is installed ---
+        Text(
+            "Coloring Fun v0.2 · levels update",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
     }
 }
