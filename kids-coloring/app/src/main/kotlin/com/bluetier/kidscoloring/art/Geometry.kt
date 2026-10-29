@@ -66,6 +66,88 @@ object Transform {
     }
 }
 
+/**
+ * Procedural ring generators for mandalas and other radial, many-region designs.
+ * Each function returns a list of polygons (one per fillable region) laid out
+ * around a centre, so a few stacked rings make an intricate "adult colouring
+ * book" page. Pure Kotlin, unit-testable.
+ */
+object Mandala {
+    private fun polar(cx: Float, cy: Float, r: Float, a: Double): Pt =
+        Pt(cx + (r * cos(a)).toFloat(), cy + (r * sin(a)).toFloat())
+
+    private const val TOP = -PI / 2 // first element points up
+
+    /** A ring of [count] pointed petals spanning [innerR]..[outerR]. */
+    fun petalRing(cx: Number, cy: Number, count: Int, innerR: Number, outerR: Number, fill: Double = 0.9): List<List<Pt>> {
+        val x = cx.toFloat(); val y = cy.toFloat(); val ri = innerR.toFloat(); val ro = outerR.toFloat()
+        val span = ro - ri
+        val pitch = 2.0 * PI / count
+        val half = pitch / 2.0 * fill
+        return (0 until count).map { i ->
+            val a = TOP + pitch * i
+            listOf(
+                polar(x, y, ri, a),
+                polar(x, y, ri + span * 0.35f, a - half),
+                polar(x, y, ri + span * 0.78f, a - half * 0.5),
+                polar(x, y, ro, a),
+                polar(x, y, ri + span * 0.78f, a + half * 0.5),
+                polar(x, y, ri + span * 0.35f, a + half),
+            )
+        }
+    }
+
+    /** A ring of [count] triangles; apex outward by default, inward if [pointOut] is false. */
+    fun triangleRing(cx: Number, cy: Number, count: Int, innerR: Number, outerR: Number, pointOut: Boolean = true, fill: Double = 0.85): List<List<Pt>> {
+        val x = cx.toFloat(); val y = cy.toFloat(); val ri = innerR.toFloat(); val ro = outerR.toFloat()
+        val pitch = 2.0 * PI / count
+        val half = pitch / 2.0 * fill
+        return (0 until count).map { i ->
+            val a = TOP + pitch * i
+            val baseR = if (pointOut) ri else ro
+            val apexR = if (pointOut) ro else ri
+            listOf(polar(x, y, baseR, a - half), polar(x, y, apexR, a), polar(x, y, baseR, a + half))
+        }
+    }
+
+    /** A ring of [count] diamonds between [innerR] and [outerR]. */
+    fun diamondRing(cx: Number, cy: Number, count: Int, innerR: Number, outerR: Number, fill: Double = 0.8): List<List<Pt>> {
+        val x = cx.toFloat(); val y = cy.toFloat(); val ri = innerR.toFloat(); val ro = outerR.toFloat()
+        val mid = (ri + ro) / 2f
+        val pitch = 2.0 * PI / count
+        val half = pitch / 2.0 * fill
+        return (0 until count).map { i ->
+            val a = TOP + pitch * i
+            listOf(polar(x, y, ri, a), polar(x, y, mid, a - half), polar(x, y, ro, a), polar(x, y, mid, a + half))
+        }
+    }
+
+    /** A ring of [count] annular sectors (curved "bricks") between [innerR] and [outerR]. */
+    fun sectorRing(cx: Number, cy: Number, count: Int, innerR: Number, outerR: Number, gap: Double = 0.14, steps: Int = 6): List<List<Pt>> {
+        val x = cx.toFloat(); val y = cy.toFloat(); val ri = innerR.toFloat(); val ro = outerR.toFloat()
+        val pitch = 2.0 * PI / count
+        val pad = pitch * gap / 2.0
+        return (0 until count).map { i ->
+            val a0 = TOP + pitch * i + pad
+            val a1 = TOP + pitch * (i + 1) - pad
+            val pts = ArrayList<Pt>((steps + 1) * 2)
+            for (s in 0..steps) pts += polar(x, y, ro, a0 + (a1 - a0) * s / steps)       // outer arc
+            for (s in 0..steps) pts += polar(x, y, ri, a1 - (a1 - a0) * s / steps)       // inner arc back
+            pts
+        }
+    }
+
+    /** A ring of [count] small circles (foils/beads) centred on radius [r]. */
+    fun beadRing(cx: Number, cy: Number, count: Int, r: Number, beadRadius: Number, sides: Int = 16): List<List<Pt>> {
+        val x = cx.toFloat(); val y = cy.toFloat(); val rr = r.toFloat()
+        val pitch = 2.0 * PI / count
+        return (0 until count).map { i ->
+            val a = TOP + pitch * i
+            Shapes.circle(x + rr * cos(a), y + rr * sin(a), beadRadius, sides)
+        }
+    }
+}
+
 /** Even-odd ray-casting point-in-polygon test. Pure; the heart of tap-to-fill. */
 object HitTest {
     fun contains(polygon: List<Pt>, x: Float, y: Float): Boolean {

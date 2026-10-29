@@ -6,26 +6,29 @@ pictures, and save your art to the gallery. No ads, no network, no tracking, no
 accounts.
 
 - **Three difficulty levels** — a difficulty selector at the top switches
-  between:
-  - **Easy** — a handful of big, simple regions (Sun, Flower, Balloon, Star,
-    Fish).
-  - **Medium** — richer scenes with more pieces (Cozy House, Sailing, Butterfly,
-    Little Car, Rocket, Cupcake).
-  - **Hard** — detailed scenes *in the style of* famous public-domain painters
-    (Starry Swirls, The Big Wave, Sunflowers, Lily Pond), with lots of small
-    regions. Each shows a style note under its title.
-- **Original art only.** Every picture is drawn from scratch out of basic shapes
-  (circles, rectangles, triangles, stars) — no third-party or branded images.
-  The Hard pages are **original compositions** inspired by the *style* of
-  public-domain artists (Van Gogh, Hokusai, Monet); they are not reproductions
-  of any specific artwork.
+  between pages aimed at older kids, teens and adults (not toddlers):
+  - **Easy** — clean, simple designs (Crystal Gem, Crescent & Stars, Maple Leaf,
+    Lotus, Simple Mandala).
+  - **Medium** — detailed figures (Rose, Butterfly, Koi, Owl, Seashell, Sailing).
+  - **Hard** — intricate, adult-colouring-book pages: **mandalas** and a **rose
+    window** (dozens of fillable pieces, generated procedurally), a **peacock**,
+    a layered **mountain landscape**, and original scenes *in the style of*
+    public-domain painters (Starry Swirls, The Big Wave, Lily Pond). Each shows
+    a style note under its title.
+- **Original art only.** Every picture is drawn from scratch in code out of
+  circles, polygons, stars and radial ring generators — no third-party, branded,
+  or copyrighted images (not from Crayola, stock sites, or anywhere else). The
+  Hard painterly pages are **original compositions** inspired by the *style* of
+  public-domain artists (Van Gogh, Hokusai, Monet), not reproductions of any
+  specific artwork.
 - **No permissions.** No `INTERNET`; saving uses scoped MediaStore (no storage
   permission on Android 10+).
 - Jetpack Compose, single module (`:app`), min SDK 29.
 
 ## How it works
 - `art/Geometry.kt` — point type, shape builders, point-list transforms
-  (rotate/translate, used to compose the Hard scenes), and even-odd ray-cast
+  (rotate/translate), the `Mandala` ring generators (petal/triangle/diamond/
+  sector/bead rings that build the intricate radial pages), and even-odd ray-cast
   point-in-polygon hit testing (pure Kotlin, unit-tested).
 - `art/Picture.kt` / `art/Pictures.kt` — pictures as lists of polygon regions,
   each tagged with a `Level` (Easy/Medium/Hard) and an optional style subtitle;
